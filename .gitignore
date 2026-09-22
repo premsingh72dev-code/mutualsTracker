@@ -1,0 +1,36 @@
+# --- Secrets and user data: never commit these ---
+# .app_secret is the JWT signing key - regenerate per environment
+# records.db is the live DB: accounts, bcrypt hashes, sessions, saved records
+.app_secret
+.env
+records.db
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Source data sheets: kept local, not published ---
+*.xls
+*.xlsx
+*.xlsm
+
+# --- Python ---
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# --- Runtime output ---
+*.log
+exports/
+uploads/
+*.bak
