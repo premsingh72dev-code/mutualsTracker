@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mutual Fund Analytics · Alpha Route Plus</title>
-  <link rel="icon" type="image/png" href="/static/arp-logo.png">
-  <link rel="apple-touch-icon" href="/static/arp-logo.png">
+  <link rel="icon" type="image/png" href="{{ root_path }}/static/images/arp-logo.png">
+  <link rel="apple-touch-icon" href="{{ root_path }}/static/images/arp-logo.png">
   <meta name="theme-color" content="#1d4ed8"></meta>
   <meta name="description" content="Professional Mutual Fund Analytics — Upload Excel sheets, compute Sharpe Ratios, benchmark performance, and explore rolling returns across fund categories.">
 
@@ -17,7 +17,7 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
-  <link rel="stylesheet" href="/static/styles.css?v=7.0.0">
+  <link rel="stylesheet" href="{{ root_path }}/static/css/styles.css?v={{ asset_version }}">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
   <div class="auth-screen" id="auth-screen" style="display: none;">
     <div class="auth-card">
       <div class="auth-brand">
-        <img src="/static/arp-logo.png" alt="Alpha Route Plus" class="auth-logo">
+        <img src="{{ root_path }}/static/images/arp-logo.png" alt="Alpha Route Plus" class="auth-logo">
         <h1 class="auth-title">Mutual Fund <span class="accent-text">Analytics</span></h1>
         <p class="auth-sub">Sign in to reach your saved analyses from any device</p>
       </div>
@@ -65,7 +65,7 @@
     <header class="app-header">
       <div class="header-main">
         <div class="brand-group">
-          <img src="/static/arp-logo.png" alt="Alpha Route Plus" class="brand-logo">
+          <img src="{{ root_path }}/static/images/arp-logo.png" alt="Alpha Route Plus" class="brand-logo">
           <div>
             <div class="brand-title-row">
               <h1 class="brand-title">Mutual Fund <span class="accent-text">Analytics</span></h1>
@@ -929,6 +929,11 @@
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="/static/app.js?v=7.0.0"></script>
+  <script>
+    // Base path the app is served from - "" at a domain root, "/mfa" behind a
+    // sub-path proxy. app.js builds every API URL from this.
+    window.APP_BASE = "{{ root_path }}";
+  </script>
+  <script src="{{ root_path }}/static/js/app.js?v={{ asset_version }}"></script>
 </body>
 </html>

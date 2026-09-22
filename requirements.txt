@@ -33,6 +33,10 @@ dnspython==2.8.0
 # CA bundle for TLS verification against Atlas.
 certifi==2026.7.22
 
+# --- Configuration ---
+# Loads secrets/config from .env at startup (main.py: load_dotenv).
+python-dotenv==1.2.3
+
 # --- Authentication ---
 bcrypt==5.0.0
 PyJWT==2.14.0

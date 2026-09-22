@@ -8,6 +8,14 @@
 (function () {
   'use strict';
 
+  // ---------------------------------------------------------------------
+  // Base path the app is served from. Injected by the server template, so
+  // the same code works at a domain root (""), behind a sub-path reverse
+  // proxy ("/mfa"), or on any cloud host - no rebuild, no hardcoded origin.
+  // ---------------------------------------------------------------------
+  const APP_BASE = (window.APP_BASE || '').replace(/\/+$/, '');
+  const apiUrl = (path) => `${APP_BASE}${path}`;
+
   // Application State
   const state = {
     funds: [],
@@ -228,7 +236,7 @@
     showAuthError('');
 
     try {
-      const resp = await fetch('/api/auth/login', {
+      const resp = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -273,7 +281,7 @@
     const btnSignout = $('btn-signout');
     if (btnSignout) {
       btnSignout.addEventListener('click', async () => {
-        try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
+        try { await fetch(apiUrl('/api/auth/logout'), { method: 'POST' }); } catch (e) { /* ignore */ }
         window.location.reload();
       });
     }
@@ -282,7 +290,7 @@
   // Decides between the login screen and the dashboard on every page load.
   async function bootstrapAuth() {
     try {
-      const resp = await fetch('/api/auth/me');
+      const resp = await fetch(apiUrl('/api/auth/me'));
       const res = await resp.json();
       if (res.status === 'success' && res.user) {
         showApp(res.user);
@@ -377,7 +385,7 @@
     if (!state.currentDataPayload) return;
     setSessionStatus('Saving…', 'saving');
     try {
-      const resp = await fetch('/api/session', {
+      const resp = await fetch(apiUrl('/api/session'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uid: state.sessionUid || null, state: collectSessionState() })
@@ -401,7 +409,7 @@
 
   async function restoreSessionFromServer() {
     try {
-      const resp = await fetch('/api/session/latest');
+      const resp = await fetch(apiUrl('/api/session/latest'));
       if (!resp.ok) return;
       const res = await resp.json();
       if (res.status !== 'success' || !res.state || !res.state.data) return;
@@ -557,7 +565,7 @@
         if (!ok) return;
         try {
           if (state.sessionUid) {
-            await fetch(`/api/session/${state.sessionUid}`, { method: 'DELETE' });
+            await fetch(apiUrl(`/api/session/${state.sessionUid}`), { method: 'DELETE' });
           }
           state.sessionUid = null;
           window.location.reload();
@@ -732,7 +740,7 @@
     showToast(`Merging category rolling returns from '${file.name}'...`, 'info');
 
     try {
-      const response = await fetch('/api/upload-rolling-category', {
+      const response = await fetch(apiUrl('/api/upload-rolling-category'), {
         method: 'POST',
         body: formData
       });
@@ -865,7 +873,7 @@
     showToast(`Reading and validating uploaded Excel sheet(s)...`, 'info');
 
     try {
-      const response = await fetch('/api/upload', {
+      const response = await fetch(apiUrl('/api/upload'), {
         method: 'POST',
         body: formData
       });
@@ -894,7 +902,7 @@
 
         showToast('Generating formatted Excel report with rankings & Sharpe comparison...', 'info');
         try {
-          const resp = await fetch('/api/export', {
+          const resp = await fetch(apiUrl('/api/export'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1125,7 +1133,7 @@
         };
 
         try {
-          const resp = await fetch('/api/records/save', {
+          const resp = await fetch(apiUrl('/api/records/save'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1164,7 +1172,7 @@
 
   async function checkDatabaseStatus() {
     try {
-      const resp = await fetch('/api/db/status');
+      const resp = await fetch(apiUrl('/api/db/status'));
       if (!resp.ok) return;
       const status = await resp.json();
 
@@ -1207,7 +1215,7 @@
 
   async function updateSavedRecordsBadge() {
     try {
-      const resp = await fetch('/api/records');
+      const resp = await fetch(apiUrl('/api/records'));
       if (!resp.ok) return;
       const res = await resp.json();
       const badge = $('saved-records-badge');
@@ -1227,7 +1235,7 @@
     checkDatabaseStatus();
 
     try {
-      const resp = await fetch('/api/records');
+      const resp = await fetch(apiUrl('/api/records'));
       if (!resp.ok) throw new Error('Failed to load records');
       const res = await resp.json();
 
@@ -1297,7 +1305,7 @@
   async function restoreSavedRecord(recordId) {
     showToast('Loading saved snapshot into dashboard...', 'info');
     try {
-      const resp = await fetch(`/api/records/${recordId}`);
+      const resp = await fetch(apiUrl(`/api/records/${recordId}`));
       if (!resp.ok) {
         const err = await resp.json();
         throw new Error(err.detail || 'Failed to load record');
@@ -1325,7 +1333,7 @@
 
   async function deleteSavedRecord(recordId) {
     try {
-      const resp = await fetch(`/api/records/${recordId}`, { method: 'DELETE' });
+      const resp = await fetch(apiUrl(`/api/records/${recordId}`), { method: 'DELETE' });
       if (!resp.ok) throw new Error('Delete failed');
       showToast('Record deleted successfully.', 'success');
       loadSavedRecordsList();
@@ -1741,7 +1749,7 @@
         showToast(`Generating Excel export for ${fundsArr.length} selected funds...`, 'info');
 
         try {
-          const resp = await fetch('/api/export-basket', {
+          const resp = await fetch(apiUrl('/api/export-basket'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

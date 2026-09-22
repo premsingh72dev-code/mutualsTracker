@@ -22,6 +22,15 @@ import pandas as pd
 import numpy as np
 import pymongo
 from bson import ObjectId
+from dotenv import load_dotenv
+
+# Load configuration and secrets from a local .env file, which is gitignored.
+# override=False means real environment variables always win, so a hosted
+# deployment (systemd, Docker, EC2) can set them directly with no .env present.
+load_dotenv(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+    override=False,
+)
 
 app = FastAPI(
     title="Mutual Fund & Dynamic Excel Analytics Platform",
@@ -32,10 +41,17 @@ app = FastAPI(
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(WORKSPACE_DIR, "templates")
 STATIC_DIR = os.path.join(WORKSPACE_DIR, "static")
+STATIC_CSS_DIR = os.path.join(STATIC_DIR, "css")
+STATIC_JS_DIR = os.path.join(STATIC_DIR, "js")
+STATIC_IMAGES_DIR = os.path.join(STATIC_DIR, "images")
+
+# Cache-busting token appended to css/js URLs. Bump it after a frontend change
+# so browsers pick up the new file instead of a stale cached copy.
+ASSET_VERSION = os.getenv("ASSET_VERSION", "8.0.0")
 
 # Ensure static & templates exist
-os.makedirs(STATIC_DIR, exist_ok=True)
-os.makedirs(TEMPLATES_DIR, exist_ok=True)
+for _d in (STATIC_DIR, STATIC_CSS_DIR, STATIC_JS_DIR, STATIC_IMAGES_DIR, TEMPLATES_DIR):
+    os.makedirs(_d, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -902,26 +918,32 @@ ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
 @app.get("/", response_class=HTMLResponse)
 async def get_index(request: Request):
     """
-    Serves the modern, responsive Mutual Fund & Dynamic Excel Analytics dashboard.
-    Directly serves index.html to guarantee 100% compatibility across all Jinja2/Starlette versions.
+    Serves the Mutual Fund & Dynamic Excel Analytics dashboard.
+
+    Rendered through Jinja2 (not read as a flat file) so every asset and API
+    URL is built from the request's root_path. That is what lets one build run
+    unchanged at a domain root, behind a sub-path reverse proxy, or on any
+    cloud host without rebaking URLs into the HTML.
     """
-    index_file = os.path.join(TEMPLATES_DIR, "index.html")
-    if os.path.exists(index_file):
-        with open(index_file, "r", encoding="utf-8") as f:
-            return HTMLResponse(
-                content=f.read(),
-                headers={
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0"
-                }
-            )
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            # "" at a domain root; "/mfa" when a proxy mounts us at a sub-path.
+            "root_path": request.scope.get("root_path", "").rstrip("/"),
+            "asset_version": ASSET_VERSION,
+        },
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def get_favicon():
-    logo_path = os.path.join(STATIC_DIR, "arp-logo.png")
+    logo_path = os.path.join(STATIC_IMAGES_DIR, "arp-logo.png")
     if os.path.exists(logo_path):
         return FileResponse(logo_path, media_type="image/png")
     return Response(status_code=204)
