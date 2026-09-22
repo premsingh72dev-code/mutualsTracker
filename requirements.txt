@@ -1,0 +1,38 @@
+# Mutual Fund Analytics - runtime dependencies
+# Pinned to the versions this app is verified working against (Python 3.10).
+#   python -m venv venv
+#   venv/Scripts/activate        # Windows
+#   source venv/bin/activate     # Linux
+#   pip install -r requirements.txt
+
+# --- Web framework & ASGI server ---
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn==0.52.4
+pydantic==2.13.5
+# Required by FastAPI to parse multipart uploads (UploadFile / File()).
+# Without it the Excel upload endpoints fail at import time.
+python-multipart==0.0.32
+# Jinja2Templates - serves templates/index.html
+jinja2==3.1.6
+
+# --- Data analysis ---
+pandas==2.3.3
+numpy==2.2.6
+
+# --- Excel I/O ---
+# xlrd reads the legacy .xls source sheets (xlrd 2.x is .xls-only by design).
+xlrd==2.0.2
+# openpyxl writes the .xlsx exports (pd.ExcelWriter(engine="openpyxl")).
+openpyxl==3.1.5
+
+# --- Database ---
+pymongo==4.17.0
+# Required for mongodb+srv:// Atlas connection strings (SRV record lookup).
+dnspython==2.8.0
+# CA bundle for TLS verification against Atlas.
+certifi==2026.7.22
+
+# --- Authentication ---
+bcrypt==5.0.0
+PyJWT==2.14.0
