@@ -3,31 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mutual Fund Analytics · Alpha Route Plus</title>
+  <title>Alpha Route Plus · Investor Workspace</title>
   <link rel="icon" type="image/png" href="{{ root_path }}/static/images/arp-logo.png">
   <link rel="apple-touch-icon" href="{{ root_path }}/static/images/arp-logo.png">
-  <meta name="theme-color" content="#1d4ed8"></meta>
+  <meta name="theme-color" content="#122a44">
   <meta name="description" content="Professional Mutual Fund Analytics — Upload Excel sheets, compute Sharpe Ratios, benchmark performance, and explore rolling returns across fund categories.">
 
   <!-- Inter Typeface — High Legibility for Financial Data -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap" rel="stylesheet">
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <link rel="stylesheet" href="{{ root_path }}/static/css/styles.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="{{ root_path }}/static/css/investor.css?v=2.0.0">
 </head>
 <body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M8 15l4-5 4 3 5-8"/></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></symbol><symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></symbol><symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h6m4 0h6M4 17h10m4 0h2"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h6l2 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z"/></symbol><symbol id="i-save" viewBox="0 0 24 24"><path d="M4 3h13l4 4v14H3V4a1 1 0 0 1 1-1Zm3 0v6h10V3M7 21v-8h10v8"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5v16m0-16C8 2 4 3 2 4v15c4-2 7-1 10 2 3-3 6-4 10-2V4c-2-1-6-2-10 1Z"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H5a1 1 0 0 0-1 1v18a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V8l-6-6Zm0 0v6h6M8 13h8M8 17h5"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol></defs></svg>
+  <a class="skip-link" href="#research-content">Skip to workspace</a>
 
   <!-- ===== AUTH GATE (shown until signed in) ===== -->
   <div class="auth-screen" id="auth-screen" style="display: none;">
+
+    <aside class="auth-story" aria-label="About Alpha Route Plus">
+      <div class="story-brand"><img class="workspace-logo" src="{{ root_path }}/static/images/arp-logo.png" alt="Alpha Route Plus logo" width="64" height="62"><div>ALPHA ROUTE PLUS<small>THE INVESTOR WORKSPACE</small></div></div>
+      <div class="story-copy"><span class="eyebrow">PERSPECTIVE BEFORE POSSIBILITY</span><h1>Good investing<br>starts with a<br><em>clearer view.</em></h1><p>Bring your fund research together.<br>See the risks. Compare the possibilities.</p></div>
+      <div class="research-art" aria-hidden="true"><div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div><div class="art-orbit orbit-three"></div><div class="art-line"></div><div class="art-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><p class="story-art-caption">CLARITY. CONSISTENCY. CONVICTION.</p>
+      <div class="story-footer">Independent thinking. Informed decisions.<span>EST. FOR THE LONG TERM</span></div>
+    </aside>
     <div class="auth-card">
       <div class="auth-brand">
         <img src="{{ root_path }}/static/images/arp-logo.png" alt="Alpha Route Plus" class="auth-logo">
-        <h1 class="auth-title">Mutual Fund <span class="accent-text">Analytics</span></h1>
-        <p class="auth-sub">Sign in to reach your saved analyses from any device</p>
+        <span class="eyebrow">YOUR RESEARCH, CONTINUED</span><h2 class="auth-title">Welcome back.</h2>
+        <p class="auth-sub">Sign in to your personal fund research workspace.</p>
       </div>
 
       <form class="auth-form" id="auth-form" onsubmit="return false;">
@@ -47,19 +57,46 @@
           </div>
         </div>
 
-        <div class="auth-error" id="auth-error" style="display: none;"></div>
+        <div class="auth-error" id="auth-error" role="alert" style="display: none;"></div>
 
         <button type="submit" class="btn btn-primary btn-lg auth-submit" id="auth-submit">Sign In</button>
       </form>
 
       <p class="auth-footnote" id="auth-footnote">
-        Your analyses are stored against your account, so you can sign in from a phone,
-        tablet or another computer and pick up exactly where you left off.
+        Your research stays with you. Access saved analyses and continue where you left off, on any device.
       </p>
     </div>
   </div>
 
   <div class="app-container" id="app-container" style="display: none;">
+
+    <aside class="investor-rail">
+      <a class="rail-brand" href="{{ root_path }}/" aria-label="Alpha Route Plus home"><img class="workspace-logo" src="{{ root_path }}/static/images/arp-logo.png" alt="Alpha Route Plus logo" width="64" height="62"><span>Alpha Route Plus<small>INVESTOR WORKSPACE</small></span></a>
+      <div class="rail-label">YOUR RESEARCH DESK</div>
+      <nav class="tabs-nav-bar" aria-label="Research sections"><button class="tab-button active" data-tab="tab-best-funds">
+          <span class="tab-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-star"></use></svg></span>
+          <span class="tab-name">Fund shortlist</span>
+          <span class="tab-pill" id="tab-count-best">0</span>
+        </button><button class="tab-button" data-tab="tab-overview">
+          <span class="tab-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-grid"></use></svg></span>
+          <span class="tab-name">Fund explorer</span>
+          <span class="tab-pill" id="tab-count-all">0</span>
+        </button><button class="tab-button" data-tab="tab-rolling">
+          <span class="tab-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+          <span class="tab-name">Rolling returns</span>
+          <span class="tab-pill" id="tab-count-rolling">0</span>
+        </button><button class="tab-button" data-tab="tab-charts">
+          <span class="tab-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-chart"></use></svg></span>
+          <span class="tab-name">Portfolio insights</span>
+        </button><button class="tab-button" data-tab="tab-dynamic">
+          <span class="tab-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-sliders"></use></svg></span>
+          <span class="tab-name">Data inspector</span>
+        </button></nav>
+      <div class="rail-note"><span class="rail-note-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-book"></use></svg></span><strong>A considered approach.</strong><p>Explore the universe.<br>Compare the fundamentals.<br>Build your conviction.</p><div class="rail-note-line"></div><span>YOUR DATA. YOUR PERSPECTIVE.</span></div>
+      <div class="rail-footer"><span class="rail-dot"></span> Private research workspace</div>
+    </aside>
+    <div class="investor-workspace" id="research-content" tabindex="-1">
+
 
     <!-- ===== HEADER ===== -->
     <header class="app-header">
@@ -68,14 +105,14 @@
           <img src="{{ root_path }}/static/images/arp-logo.png" alt="Alpha Route Plus" class="brand-logo">
           <div>
             <div class="brand-title-row">
-              <h1 class="brand-title">Mutual Fund <span class="accent-text">Analytics</span></h1>
+              <span class="brand-title">Your investment workspace</span>
               <span class="db-status-badge" id="mongo-status-badge" title="Storage Status">
                 <span class="db-dot"></span>
                 <span id="mongo-status-text">Analytics Ready</span>
               </span>
             </div>
             <p class="brand-subtitle">
-              <span class="subtitle-text">Excel Processor · Sharpe Benchmark · Rolling Returns</span>
+              <span class="subtitle-text">A little more perspective. A better-informed decision.</span>
               <span class="session-status" id="session-status" style="display: none;"></span>
             </p>
           </div>
@@ -83,16 +120,16 @@
 
         <div class="header-actions">
           <button id="btn-save-record" class="btn btn-secondary" title="Save this analyzed dataset for future reference" style="display: none;">
-            <span class="btn-icon">💾</span>
-            <span class="btn-label">Save Analysis</span>
+            <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-save"></use></svg></span>
+            <span class="btn-label">Save research</span>
           </button>
           <button id="btn-open-records" class="btn btn-secondary" title="View saved records history">
-            <span class="btn-icon">📚</span>
-            <span class="btn-label">Records (<span id="saved-records-badge">0</span>)</span>
+            <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-folder"></use></svg></span>
+            <span class="btn-label">Saved (<span id="saved-records-badge">0</span>)</span>
           </button>
           <button id="btn-export-excel" class="btn btn-primary" title="Download enriched Excel file with calculated ranks and Sharpe comparison">
-            <span class="btn-icon">📥</span>
-            <span class="btn-label">Export Data</span>
+            <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-download"></use></svg></span>
+            <span class="btn-label">Export report</span>
           </button>
           <div class="user-chip" id="user-chip" title="Signed in">
             <span class="user-avatar" id="user-avatar">?</span>
@@ -102,6 +139,10 @@
         </div>
       </div>
 
+      <section class="workspace-heading">
+        <div><span class="eyebrow">MUTUAL FUND RESEARCH</span><h1 id="workspace-title">Make room for a clearer view.</h1><p id="workspace-description">Turn your fund data into a focused investment perspective.</p></div>
+        <span class="workspace-edition">THE RESEARCH DESK <span>01 / ALPHA ROUTE PLUS</span></span>
+      </section>
       <!-- Dual Excel Sheets Upload Panel -->
       <div class="upload-dual-grid" id="upload-panel">
 
@@ -109,13 +150,13 @@
         <div class="upload-card" id="drop-zone-risk">
           <input type="file" id="file-risk" accept=".xls,.xlsx,.xlsm,.csv" class="file-hidden-input">
           <div class="upload-card-content">
-            <div class="upload-icon-badge">📑</div>
+            <div class="upload-icon-badge"><svg class="ui-icon" aria-hidden="true"><use href="#i-file"></use></svg></div>
             <div class="upload-card-details">
-              <h4>1. Risk-Ratios Sheet</h4>
-              <p>Sharpe Ratio, Information Ratio &amp; Treynor (Primary Universe)</p>
+              <h4>Risk & fundamentals</h4>
+              <p>Your fund universe · Sharpe, Information & Treynor</p>
               <div class="upload-status-text" id="status-risk">No file selected</div>
             </div>
-            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-risk">Choose File</button>
+            <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-risk">Import file</button>
           </div>
         </div>
 
@@ -123,14 +164,14 @@
         <div class="upload-card" id="drop-zone-rolling">
           <input type="file" id="file-rolling" accept=".xls,.xlsx,.xlsm,.csv" class="file-hidden-input">
           <div class="upload-card-content">
-            <div class="upload-icon-badge">🔄</div>
+            <div class="upload-icon-badge"><svg class="ui-icon" aria-hidden="true"><use href="#i-clock"></use></svg></div>
             <div class="upload-card-details">
-              <h4>2. Rolling-Returns Sheet</h4>
-              <p>Upload rolling returns (1Y, 2Y, 3Y, 5Y CAGR) to combine with data</p>
+              <h4>Return consistency</h4>
+              <p>Add performance across 1, 2, 3 & 5 years</p>
               <div class="upload-status-text" id="status-rolling">No file selected</div>
             </div>
             <div class="upload-card-actions">
-              <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-rolling">Choose File</button>
+              <button type="button" class="btn btn-sm btn-secondary" id="btn-browse-rolling">Import file</button>
               <button type="button" class="btn btn-sm btn-outline" id="btn-add-more-rolling" style="display: none;">+ Add Sheet</button>
               <button type="button" class="btn btn-sm btn-text text-danger" id="btn-reset-rolling" style="display: none;" title="Clear uploaded rolling returns only">Reset</button>
             </div>
@@ -142,17 +183,20 @@
 
     <!-- ===== VERIFICATION BANNER ===== -->
     <div class="excel-verification-banner" id="excel-verification-banner" style="display: none;">
-      <div class="verify-badge">✓ Verified Excel Source</div>
+      <div class="verify-badge">Imported data</div>
       <div class="verify-details" id="verify-details-text">Data parsed directly from uploaded spreadsheet file(s)</div>
-      <div class="verify-meta" id="verify-meta-chips"></div>
+      <details class="source-details"><summary>Source details</summary><div class="verify-meta" id="verify-meta-chips"></div></details>
       <button type="button" class="btn btn-sm btn-outline btn-add-rolling-inline" id="btn-add-rolling-inline" title="Upload another Rolling-Returns sheet (e.g. a different fund category) — it merges into the existing data">
-        <span>➕ Add Rolling Returns Sheet</span>
+        <span>+ Add returns</span>
       </button>
       <button type="button" class="btn btn-sm btn-outline btn-toggle-upload" id="btn-toggle-upload-panel" title="Show or hide the file upload panel">
-        <span id="btn-toggle-upload-label">⚙ Change Files</span>
+        <span id="btn-toggle-upload-label">Manage sources</span>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline btn-match-report-toolbar" id="btn-toggle-match-report" style="display: none;" title="Show or hide the sheet matching report">
+        <span id="btn-toggle-match-report-label">Match report</span>
       </button>
       <button type="button" class="btn btn-sm btn-outline btn-clear-session" id="btn-clear-session" title="Clear the saved session from the database and start over with no data">
-        <span>🗑 Start Fresh</span>
+        <span>Start fresh</span>
       </button>
     </div>
 
@@ -161,12 +205,13 @@
 
     <!-- ===== KPI METRIC CARDS ===== -->
     <section class="kpi-section" id="kpi-section" style="display: none;">
+      <div class="section-eyebrow"><span>YOUR UNIVERSE AT A GLANCE</span><span>Based on imported data</span></div>
       <div class="kpi-grid">
 
         <div class="kpi-card">
           <div class="kpi-top">
-            <span class="kpi-label">TOTAL FUNDS</span>
-            <span class="kpi-icon-pill icon-purple">📊</span>
+            <span class="kpi-label">Funds in view</span>
+            <span class="kpi-icon-pill icon-purple"><svg class="ui-icon" aria-hidden="true"><use href="#i-chart"></use></svg></span>
           </div>
           <div class="kpi-main-val" id="kpi-total-funds">0</div>
           <div class="kpi-bottom">
@@ -177,20 +222,20 @@
 
         <div class="kpi-card kpi-card-highlight">
           <div class="kpi-top">
-            <span class="kpi-label">AVG SHARPE RATIO</span>
-            <span class="kpi-icon-pill icon-blue">🎯</span>
+            <span class="kpi-label">Average Sharpe</span>
+            <span class="kpi-icon-pill icon-blue"><svg class="ui-icon" aria-hidden="true"><use href="#i-grid"></use></svg></span>
           </div>
           <div class="kpi-main-val val-blue" id="kpi-avg-sharpe">0.00</div>
           <div class="kpi-bottom">
-            <span class="kpi-sub-text">Portfolio Mean</span>
+            <span class="kpi-sub-text">Universe average</span>
             <span class="kpi-badge-benchmark" id="kpi-benchmark-tag">Benchmark</span>
           </div>
         </div>
 
         <div class="kpi-card">
           <div class="kpi-top">
-            <span class="kpi-label">≥ AVG SHARPE</span>
-            <span class="kpi-icon-pill icon-emerald">🚀</span>
+            <span class="kpi-label">Above threshold</span>
+            <span class="kpi-icon-pill icon-emerald"><svg class="ui-icon" aria-hidden="true"><use href="#i-arrow"></use></svg></span>
           </div>
           <div class="kpi-main-val val-emerald" id="kpi-above-count">0</div>
           <div class="kpi-bottom">
@@ -201,8 +246,8 @@
 
         <div class="kpi-card">
           <div class="kpi-top">
-            <span class="kpi-label">&lt; AVG SHARPE</span>
-            <span class="kpi-icon-pill icon-amber">⚠️</span>
+            <span class="kpi-label">Below threshold</span>
+            <span class="kpi-icon-pill icon-amber"><svg class="ui-icon" aria-hidden="true"><use href="#i-shield"></use></svg></span>
           </div>
           <div class="kpi-main-val val-amber" id="kpi-below-count">0</div>
           <div class="kpi-bottom">
@@ -213,8 +258,8 @@
 
         <div class="kpi-card">
           <div class="kpi-top">
-            <span class="kpi-label">TOP PERFORMER</span>
-            <span class="kpi-icon-pill icon-gold">🏆</span>
+            <span class="kpi-label">Highest Sharpe</span>
+            <span class="kpi-icon-pill icon-gold"><svg class="ui-icon" aria-hidden="true"><use href="#i-star"></use></svg></span>
           </div>
           <div class="kpi-main-val val-gold" id="kpi-top-sharpe">0.00</div>
           <div class="kpi-bottom">
@@ -224,12 +269,12 @@
 
         <div class="kpi-card">
           <div class="kpi-top">
-            <span class="kpi-label">TOTAL AUM</span>
-            <span class="kpi-icon-pill icon-cyan">💰</span>
+            <span class="kpi-label">Combined AUM</span>
+            <span class="kpi-icon-pill icon-cyan"><svg class="ui-icon" aria-hidden="true"><use href="#i-layers"></use></svg></span>
           </div>
           <div class="kpi-main-val" id="kpi-total-aum">₹0 Cr</div>
           <div class="kpi-bottom">
-            <span class="kpi-sub-text">Combined Fund Assets</span>
+            <span class="kpi-sub-text">Assets across your fund universe</span>
           </div>
         </div>
 
@@ -239,15 +284,15 @@
     <!-- ===== BENCHMARK ADJUSTER ===== -->
     <section class="benchmark-bar" id="benchmark-section" style="display: none;">
       <div class="benchmark-title-wrap">
-        <span class="pill-badge">Live Benchmark</span>
+        <span class="pill-badge">COMPARISON</span>
         <div class="benchmark-text">
-          <span class="benchmark-label">Sharpe Ratio Cutoff:</span>
+          <span class="benchmark-label">Sharpe threshold</span>
           <span class="benchmark-val" id="current-threshold-label">0.62</span>
         </div>
       </div>
 
       <div class="benchmark-slider-wrap">
-        <input type="range" id="benchmark-slider" min="0.0" max="1.5" step="0.01" value="0.62" class="clean-slider">
+        <input type="range" id="benchmark-slider" aria-label="Sharpe comparison threshold" min="0.0" max="1.5" step="0.01" value="0.62" class="clean-slider">
         <div class="slider-marks">
           <span>0.0</span>
           <span id="mark-auto-avg" class="active-mark">Auto Avg (0.62)</span>
@@ -258,8 +303,8 @@
 
       <div class="benchmark-quick-buttons">
         <button class="preset-btn active" data-preset="auto">Auto Avg</button>
-        <button class="preset-btn" data-preset="0.75">Top 25% (0.75)</button>
-        <button class="preset-btn" data-preset="0.90">Alpha (0.90)</button>
+        <button class="preset-btn" data-preset="0.75">Sharpe 0.75</button>
+        <button class="preset-btn" data-preset="0.90">Sharpe 0.90</button>
       </div>
     </section>
 
@@ -267,54 +312,28 @@
     <main class="main-workspace" id="dashboard-main" style="display: none;">
 
       <!-- Tab Navigation -->
-      <div class="tabs-nav-bar">
-        <button class="tab-button active" data-tab="tab-overview">
-          <span class="tab-icon">📋</span>
-          <span class="tab-name">All Mutual Funds</span>
-          <span class="tab-pill" id="tab-count-all">0</span>
-        </button>
-        <button class="tab-button" data-tab="tab-charts">
-          <span class="tab-icon">📊</span>
-          <span class="tab-name">Visual Analytics</span>
-        </button>
-        <button class="tab-button" data-tab="tab-rolling">
-          <span class="tab-icon">🔄</span>
-          <span class="tab-name">Rolling Returns</span>
-          <span class="tab-pill" id="tab-count-rolling">0</span>
-        </button>
-        <button class="tab-button" data-tab="tab-best-funds">
-          <span class="tab-icon">🏆</span>
-          <span class="tab-name">Best Funds Finder</span>
-          <span class="tab-pill" id="tab-count-best">0</span>
-        </button>
-        <button class="tab-button" data-tab="tab-dynamic">
-          <span class="tab-icon">🧪</span>
-          <span class="tab-name">Column Inspector</span>
-        </button>
-      </div>
-
       <!-- ===== TAB 1: ALL FUNDS TABLE ===== -->
-      <div class="tab-panel active" id="tab-overview">
+      <div class="tab-panel" id="tab-overview">
 
         <!-- Industry Ratio Screener -->
         <div class="ratio-screener-bar">
           <div class="screener-header-row">
             <div class="screener-title-group">
-              <span class="screener-icon">⚖️</span>
-              <span class="screener-title">Ratio Screener:</span>
+              <span class="screener-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-sliders"></use></svg></span>
+              <span class="screener-title">Quick screens</span>
             </div>
             <div class="screener-presets-group" id="screener-presets-group">
               <button type="button" class="ratio-preset-chip active" data-preset="all">All Funds</button>
-              <button type="button" class="ratio-preset-chip" data-preset="best-funds" style="font-weight:700;background:linear-gradient(135deg, #fef3c7, #fde68a);color:#92400e;border-color:#f59e0b;">🏆 Best Funds (3 Ratios + Top Rolling)</button>
-              <button type="button" class="ratio-preset-chip" data-preset="outperformers">🌟 Outperformers (Sharpe ≥ Avg)</button>
-              <button type="button" class="ratio-preset-chip" data-preset="low-vol">🛡️ Low Volatility (Std Dev ≤ 16%)</button>
-              <button type="button" class="ratio-preset-chip" data-preset="high-treynor">🚀 High Treynor (≥ 10)</button>
-              <button type="button" class="ratio-preset-chip" data-preset="compounders">📈 Compounders (3Y &amp; 5Y ≥ 18%)</button>
-              <button type="button" class="ratio-preset-chip" data-preset="giants">🏛️ High AUM Giants (≥ ₹5,000 Cr)</button>
+              <button type="button" class="ratio-preset-chip" data-preset="best-funds" title="Funds in the current ranked shortlist" style="font-weight:700;background:linear-gradient(135deg, #fef3c7, #fde68a);color:#92400e;border-color:#f59e0b;">Shortlisted funds</button>
+              <button type="button" class="ratio-preset-chip" data-preset="outperformers">Above threshold</button>
+              <button type="button" class="ratio-preset-chip" data-preset="low-vol" title="Standard deviation ≤ 16%">Lower volatility</button>
+              <button type="button" class="ratio-preset-chip" data-preset="high-treynor" title="Treynor ratio ≥ 10">Higher Treynor</button>
+              <button type="button" class="ratio-preset-chip" data-preset="compounders" title="3Y return ≥ 18%; available 5Y return must also be ≥ 18%">Compounders</button>
+              <button type="button" class="ratio-preset-chip" data-preset="giants" title="AUM ≥ ₹5,000 crore">Large AUM</button>
             </div>
             <button type="button" class="btn btn-sm btn-secondary" id="btn-toggle-custom-filter">
-              <span class="btn-icon">⚙️</span>
-              <span>Custom Filter <span id="custom-filter-arrow">▾</span></span>
+              <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-sliders"></use></svg></span>
+              <span>Set criteria <span id="custom-filter-arrow">▾</span></span>
             </button>
           </div>
 
@@ -375,21 +394,21 @@
         <div class="filter-controls-bar">
           <div class="search-input-box">
             <span class="search-icon">🔍</span>
-            <input type="text" id="table-search" placeholder="Search by scheme name or category...">
+            <input type="text" id="table-search" aria-label="Search funds or categories" placeholder="Search by scheme name or category...">
             <button id="clear-search" class="clear-btn" style="display:none;">✕</button>
           </div>
 
           <div class="filter-group">
             <div class="select-box">
               <label>Category:</label>
-              <select id="filter-category" class="form-select">
+              <select id="filter-category" aria-label="Filter by category" class="form-select">
                 <option value="all">All Categories</option>
               </select>
             </div>
 
             <div class="select-box">
               <label>Performance:</label>
-              <select id="filter-performance" class="form-select">
+              <select id="filter-performance" aria-label="Filter by performance" class="form-select">
                 <option value="all">All Funds</option>
                 <option value="above">≥ Avg Sharpe</option>
                 <option value="below">&lt; Avg Sharpe</option>
@@ -415,11 +434,11 @@
           </div>
           <div class="basket-actions">
             <button type="button" class="btn btn-sm btn-primary" id="btn-export-basket">
-              <span class="btn-icon">📥</span>
+              <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-download"></use></svg></span>
               <span>Export Basket</span>
             </button>
             <button type="button" class="btn btn-sm btn-secondary" id="btn-save-basket">
-              <span class="btn-icon">💾</span>
+              <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-save"></use></svg></span>
               <span>Save Basket</span>
             </button>
             <button type="button" class="btn btn-sm btn-secondary" id="btn-clear-basket">
@@ -447,7 +466,7 @@
               <thead>
                 <tr>
                   <th class="th-select text-center" style="width: 40px;">
-                    <input type="checkbox" id="select-all-filtered" title="Select/deselect all">
+                    <input type="checkbox" id="select-all-filtered" aria-label="Select all filtered funds" title="Select/deselect all">
                   </th>
                   <th class="th-rank" data-sort="rank">Rank <span class="sort-arr">⇅</span></th>
                   <th class="th-name" data-sort="name">Scheme Name <span class="sort-arr">⇅</span></th>
@@ -475,7 +494,7 @@
           <div class="pagination-footer">
             <div class="rows-per-page">
               <span>Rows:</span>
-              <select id="page-size-select" class="form-select select-sm">
+              <select id="page-size-select" aria-label="Rows per page" class="form-select select-sm">
                 <option value="25">25</option>
                 <option value="50" selected>50</option>
                 <option value="100">100</option>
@@ -501,7 +520,7 @@
             <div class="chart-card-header">
               <div>
                 <span class="chart-type-tag">Distribution</span>
-                <h3>Sharpe Ratio Distribution Spectrum</h3>
+                <h3>The shape of your fund universe</h3>
               </div>
               <span class="chart-sub">Concentration across risk-adjusted bands</span>
             </div>
@@ -514,7 +533,7 @@
             <div class="chart-card-header">
               <div>
                 <span class="chart-type-tag gold-tag">Leaderboard</span>
-                <h3>Top 20 Outperforming Funds</h3>
+                <h3>Leading funds by Sharpe</h3>
               </div>
               <span class="chart-sub">Ranked by Sharpe Ratio</span>
             </div>
@@ -527,9 +546,9 @@
             <div class="chart-card-header">
               <div>
                 <span class="chart-type-tag">Category Alpha</span>
-                <h3>Avg Sharpe Ratio by Fund Category</h3>
+                <h3>How categories compare</h3>
               </div>
-              <span class="chart-sub">Categories exceeding overall market average</span>
+              <span class="chart-sub">Average Sharpe across your uploaded categories</span>
             </div>
             <div class="chart-canvas-box" style="height: 440px;">
               <canvas id="chart-categories"></canvas>
@@ -540,7 +559,7 @@
             <div class="chart-card-header">
               <div>
                 <span class="chart-type-tag">Scale vs Performance</span>
-                <h3>AUM (Log Scale) vs Sharpe Ratio</h3>
+                <h3>Fund size meets risk-adjusted return</h3>
               </div>
               <span class="chart-sub">Quadrant breakdown: fund size vs risk-adjusted return</span>
             </div>
@@ -557,10 +576,10 @@
         <div class="rolling-wrapper">
 
           <div class="rolling-banner-card">
-            <div class="banner-icon">🔄</div>
+            <div class="banner-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-clock"></use></svg></div>
             <div>
-              <h3>Rolling Returns &amp; Consistency Matrix</h3>
-              <p>Compare 1Y, 2Y, 3Y, and 5Y rolling CAGRs across funds to evaluate consistency and downside protection.</p>
+              <h3>Look beyond a single year.</h3>
+              <p>Compare the available 1, 2, 3 and 5-year rolling returns side by side.</p>
             </div>
           </div>
 
@@ -626,29 +645,29 @@
       </div>
 
       <!-- ===== TAB: BEST MUTUAL FUNDS FINDER ===== -->
-      <div class="tab-panel" id="tab-best-funds">
+      <div class="tab-panel active" id="tab-best-funds">
         <div class="best-funds-wrapper">
 
           <!-- 1. Header & Strategy Criteria Bar -->
           <div class="best-funds-header-card">
             <div class="best-header-left">
-              <div class="best-header-icon">🏆</div>
+              <div class="best-header-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-star"></use></svg></div>
               <div>
-                <h2>Best Mutual Funds Selector</h2>
-                <p>Multi-Factor Alpha Screening: Shortlist funds meeting <strong>all 3 risk-adjusted conditions</strong>, then select the champion fund that dominates rolling returns in <strong>maximum periods</strong>.</p>
+                <h2>A shortlist worth a closer look.</h2>
+                <p>Compare benchmark ratios and return consistency. Use the category view to explore your next opportunity.</p>
               </div>
             </div>
             <div class="best-header-controls">
               <div class="best-control-group">
-                <span class="control-label">Benchmark Basis:</span>
+                <span class="control-label">Compare against</span>
                 <div class="benchmark-toggle-pills" id="best-benchmark-toggle">
                   <button type="button" class="btn-toggle-pill active" data-basis="category" title="Compare funds against their own Category Average (Financial Industry Standard)">Category Avg</button>
                   <button type="button" class="btn-toggle-pill" data-basis="portfolio" title="Compare funds against the Entire Portfolio/Universe Average">Universe Avg</button>
                 </div>
               </div>
               <div class="best-control-group">
-                <span class="control-label">Category Filter:</span>
-                <select id="best-funds-cat-filter" class="form-select best-cat-select">
+                <span class="control-label">Focus category</span>
+                <select id="best-funds-cat-filter" aria-label="Shortlist category" class="form-select best-cat-select">
                   <option value="all">All Categories</option>
                 </select>
               </div>
@@ -659,10 +678,10 @@
           <div class="best-criteria-grid">
             <div class="criteria-card" id="criteria-card-sharpe">
               <div class="criteria-top">
-                <span class="criteria-badge-step">Step 1</span>
-                <span class="criteria-icon">🎯</span>
+                <span class="criteria-badge-step">01 · RISK & RETURN</span>
+                <span class="criteria-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-grid"></use></svg></span>
               </div>
-              <h4>Sharpe Ratio &gt; Average</h4>
+              <h4>Sharpe ratio</h4>
               <p>Risk-adjusted excess return per unit of volatility</p>
               <div class="criteria-metric">
                 <span class="criteria-lbl">Benchmark:</span>
@@ -675,10 +694,10 @@
 
             <div class="criteria-card" id="criteria-card-info">
               <div class="criteria-top">
-                <span class="criteria-badge-step">Step 2</span>
+                <span class="criteria-badge-step">02 · CONSISTENCY</span>
                 <span class="criteria-icon">🧭</span>
               </div>
-              <h4>Information Ratio &gt; Average</h4>
+              <h4>Information ratio</h4>
               <p>Consistency of benchmark beating / active management alpha</p>
               <div class="criteria-metric">
                 <span class="criteria-lbl">Benchmark:</span>
@@ -691,10 +710,10 @@
 
             <div class="criteria-card" id="criteria-card-treynor">
               <div class="criteria-top">
-                <span class="criteria-badge-step">Step 3</span>
+                <span class="criteria-badge-step">03 · MARKET RISK</span>
                 <span class="criteria-icon">📈</span>
               </div>
-              <h4>Treynor Ratio &gt; Average</h4>
+              <h4>Treynor ratio</h4>
               <p>Excess return earned per unit of systematic market risk (Beta)</p>
               <div class="criteria-metric">
                 <span class="criteria-lbl">Benchmark:</span>
@@ -707,14 +726,14 @@
 
             <div class="criteria-card criteria-summary-card">
               <div class="criteria-top">
-                <span class="criteria-badge-step">Step 4 Result</span>
+                <span class="criteria-badge-step">04 · YOUR RESULTS</span>
                 <span class="criteria-icon">⭐</span>
               </div>
-              <h4>Shortlisted Candidates</h4>
-              <p>Funds meeting all 3 risk-adjusted conditions simultaneously</p>
+              <h4>Funds in this shortlist</h4>
+              <p>Ranked using the active benchmark and category view</p>
               <div class="shortlist-count-box">
                 <span class="shortlist-number" id="best-shortlist-count">0</span>
-                <span class="shortlist-label">Qualified Funds</span>
+                <span class="shortlist-label">Ranked funds</span>
               </div>
               <span class="shortlist-sub" id="best-shortlist-pct">0% of universe</span>
             </div>
@@ -728,8 +747,8 @@
           <!-- 4. Period-by-Period Scorecard (1Y, 2Y, 3Y, 5Y) -->
           <div class="period-scorecard-section">
             <div class="section-heading-row">
-              <h3>Step 5: Rolling Returns Period-by-Period Dominance</h3>
-              <span class="section-sub-text">Fund with highest CAGR in each investment holding horizon</span>
+              <h3>Leaders across holding periods</h3>
+              <span class="section-sub-text">Highest rolling return in each available horizon</span>
             </div>
             <div class="rolling-coverage-notice" id="rolling-coverage-notice" style="display: none;"></div>
             <div class="period-cards-grid" id="period-cards-grid">
@@ -741,13 +760,13 @@
           <div class="table-card" style="margin-top: 20px;">
             <div class="table-meta-row">
               <div class="meta-left">
-                <span>Shortlisted Funds Leaderboard — <strong id="best-table-count">0</strong> funds</span>
-                <span class="table-sub-badge">Ranked by Maximum Periods Won &amp; Rolling Returns</span>
+                <span>The shortlist · <strong id="best-table-count">0</strong> funds</span>
+                <span class="table-sub-badge">Ratios · return consistency · relative rank</span>
               </div>
               <div class="meta-right">
                 <button type="button" class="btn btn-sm btn-secondary" id="btn-add-all-best-basket">
-                  <span class="btn-icon">🧺</span>
-                  <span>Add Best Funds to Basket</span>
+                  <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-layers"></use></svg></span>
+                  <span>Add shortlist to basket</span>
                 </button>
               </div>
             </div>
@@ -784,9 +803,9 @@
       <div class="tab-panel" id="tab-dynamic">
         <div class="schema-card">
           <div class="schema-header">
-            <span class="chart-type-tag">Column Mapper</span>
-            <h3>Excel Schema &amp; Column Inspector</h3>
-            <p>Inspect detected columns from your uploaded sheets. Verify custom column mappings here.</p>
+            <span class="chart-type-tag">SOURCE TRANSPARENCY</span>
+            <h3>Understand your source data</h3>
+            <p>Review the columns detected in your files and how they appear in your research.</p>
           </div>
           <div class="schema-grid" id="mapping-controls"></div>
         </div>
@@ -796,68 +815,69 @@
 
     <!-- ===== EMPTY STATE ===== -->
     <div class="empty-state-view" id="empty-state">
-      <div class="empty-icon-ring">📂</div>
-      <h2>Mutual Fund Analytics Platform</h2>
-      <p>Upload your Excel spreadsheets — <strong>Risk-Ratios.xls</strong> and <strong>Rolling-Returns.xls</strong> — to automatically compute portfolio-wide Sharpe ratios, highlight outperformers, and explore rolling returns across all fund categories.</p>
+      <div class="empty-icon-ring"><svg class="ui-icon" aria-hidden="true"><use href="#i-folder"></use></svg></div>
+      <span class="eyebrow">A FRESH PERSPECTIVE STARTS HERE</span><h2>Your research. Brought into focus.</h2>
+      <p>Import your fund data to compare risk, explore return consistency, and build a considered shortlist. Your workspace will take it from there.</p>
 
       <div class="empty-cta-buttons">
         <button id="btn-empty-risk" class="btn btn-primary btn-lg" type="button">
-          <span class="btn-icon">📑</span>
-          <span>Upload Risk-Ratios Sheet</span>
+          <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-file"></use></svg></span>
+          <span>Import risk data</span>
         </button>
         <button id="btn-empty-rolling" class="btn btn-secondary btn-lg" type="button">
-          <span class="btn-icon">🔄</span>
-          <span>Upload Rolling-Returns Sheet</span>
+          <span class="btn-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+          <span>Import rolling returns</span>
         </button>
       </div>
 
       <div class="features-summary-grid">
         <div class="feature-card">
-          <span class="feat-icon">🎯</span>
-          <h4>Sharpe Ratio Benchmark</h4>
-          <p>Calculates the portfolio-wide average Sharpe ratio and highlights all outperforming funds in real time.</p>
+          <span class="feat-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-grid"></use></svg></span>
+          <h4>Find your starting point</h4>
+          <p>Compare fund Sharpe ratios against the average of your uploaded universe.</p>
         </div>
         <div class="feature-card">
-          <span class="feat-icon">🔄</span>
-          <h4>Multi-Period Rolling Returns</h4>
-          <p>Combines risk ratios with 1Y, 2Y, 3Y, and 5Y rolling CAGR performance across all schemes.</p>
+          <span class="feat-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-clock"></use></svg></span>
+          <h4>Take the longer view</h4>
+          <p>Bring 1, 2, 3 and 5-year returns into one consistent view.</p>
         </div>
         <div class="feature-card">
-          <span class="feat-icon">📊</span>
-          <h4>Interactive Visual Analytics</h4>
-          <p>Sharpe distribution charts, category alpha bars, AUM vs performance scatter, and leaderboard visualisations.</p>
+          <span class="feat-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-chart"></use></svg></span>
+          <h4>See the bigger picture</h4>
+          <p>Explore categories, relative performance, and fund size with clear visual comparisons.</p>
         </div>
         <div class="feature-card">
-          <span class="feat-icon">💾</span>
-          <h4>Save &amp; Recall Sessions</h4>
-          <p>Save any analysed snapshot and reload the complete dashboard — tables, rankings, and charts — at any time.</p>
+          <span class="feat-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-save"></use></svg></span>
+          <h4>Keep your perspective</h4>
+          <p>Save your research and return to the same tables, rankings, and charts later.</p>
         </div>
       </div>
     </div>
 
     <!-- ===== FOOTER ===== -->
     <footer class="app-footer">
-      <div>Mutual Fund Analytics Platform &copy; 2026</div>
-      <div>AlphaRoute Plus Analytics</div>
+      <div>Alpha Route Plus &copy; 2026</div>
+      <div>Clarity for the considered investor.</div>
     </footer>
 
+    </div><!-- /investor-workspace -->
   </div><!-- /app-container -->
 
   <!-- ===== MODAL: SAVE RECORD ===== -->
   <div class="modal-backdrop" id="modal-save-record" style="display: none;">
-    <div class="modal-dialog">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Save research">
       <div class="modal-header">
         <div class="modal-title-group">
-          <span class="modal-icon">💾</span>
-          <h3>Save Analysis Snapshot</h3>
+          <span class="modal-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-save"></use></svg></span>
+          <h3>Save your research</h3>
         </div>
         <button type="button" class="btn-modal-close" id="btn-close-save-modal">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-desc">Save the currently analysed dataset to permanent storage for future reference and instant dashboard recall.</p>
+        <p class="modal-desc">Give this view a name so you can come back to it later.</p>
 
         <div class="form-group-modal">
-          <label for="save-record-name">Record Name / Title:</label>
+          <label for="save-record-name">Research name</label>
           <input type="text" id="save-record-name" class="modal-input" placeholder="e.g. August 2026 Portfolio Review">
         </div>
 
@@ -891,11 +911,11 @@
 
   <!-- ===== MODAL: SAVED RECORDS ===== -->
   <div class="modal-backdrop" id="modal-saved-records" style="display: none;">
-    <div class="modal-dialog modal-dialog-lg">
+    <div class="modal-dialog modal-dialog-lg" role="dialog" aria-modal="true" aria-label="Saved research">
       <div class="modal-header">
         <div class="modal-title-group">
-          <span class="modal-icon">📚</span>
-          <h3>Saved Analysis Records</h3>
+          <span class="modal-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-folder"></use></svg></span>
+          <h3>Your research library</h3>
         </div>
         <button type="button" class="btn-modal-close" id="btn-close-records-modal">✕</button>
       </div>
@@ -904,14 +924,14 @@
 
         <!-- Storage Status Bar -->
         <div class="storage-info-banner" id="compass-info-banner">
-          <div class="storage-icon">💾</div>
+          <div class="storage-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-save"></use></svg></div>
           <div class="compass-text-block">
             <div class="compass-title-row">
-              <strong>Local Storage:</strong>
+              <strong>Server Storage:</strong>
               <span class="compass-status-tag" id="compass-status-tag">Checking…</span>
             </div>
             <div class="compass-details" id="compass-details-text">
-              All analysis records are saved securely on this device.
+              Saved analyses and working sessions are stored in MongoDB on the server.
             </div>
           </div>
         </div>
@@ -927,13 +947,14 @@
   </div>
 
   <!-- Toast Container -->
-  <div id="toast-container" class="toast-container"></div>
+  <div id="toast-container" role="status" aria-live="polite" class="toast-container"></div>
 
   <script>
     // Base path the app is served from - "" at a domain root, "/mfa" behind a
     // sub-path proxy. app.js builds every API URL from this.
     window.APP_BASE = "{{ root_path }}";
   </script>
-  <script src="{{ root_path }}/static/js/app.js?v={{ asset_version }}"></script>
+  <script src="{{ root_path }}/static/js/app.js?v={{ asset_version }}-readability1"></script>
+  <script src="{{ root_path }}/static/js/investor-ui.js?v=1.0.0"></script>
 </body>
 </html>

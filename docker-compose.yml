@@ -1,0 +1,43 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mutuals_tracker_app
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      - PORT=80
+      - HOST=0.0.0.0
+      - MONGO_URI=mongodb://mongo:27017/
+      - MONGO_DB_NAME=mutual_funds_db
+      - ALLOW_SIGNUP=0
+      - COOKIE_SECURE=0
+      - APP_SECRET=mutuals_tracker_production_secret_key_change_me
+    volumes:
+      - ./main.py:/app/main.py
+      - ./templates:/app/templates
+      - ./static:/app/static
+      - ./logs:/app/logs
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:7-jammy
+    container_name: mutuals_tracker_mongo
+    restart: unless-stopped
+    ports:
+      # Compass connects through SSH to this server-only loopback port.
+      # The app connects internally to mongo:27017 on the Compose network.
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - ./data/mongo:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok' | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+

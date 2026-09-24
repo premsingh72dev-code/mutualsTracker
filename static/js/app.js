@@ -41,7 +41,7 @@
     pageSize: 50,
     
     // Tab Navigation
-    activeTab: 'tab-overview',
+    activeTab: 'tab-best-funds',
 
     // Multi-Ratio Screener & Industry Presets
     activePreset: 'all',
@@ -495,7 +495,7 @@
       btn.classList.toggle('active', btn.dataset.basis === state.bestFundsBenchmarkBasis);
     });
 
-    if (ui.activeTab) switchToTab(ui.activeTab);
+    switchToTab(ui.activeTab || 'tab-best-funds');
 
     recomputeThresholds();
     renderBasketBar();
@@ -571,6 +571,22 @@
           window.location.reload();
         } catch (err) {
           showToast(`Could not clear session: ${err.message}`, 'error');
+        }
+      });
+    }
+
+    // Toggle match report banner from toolbar
+    const btnToggleMatch = $('btn-toggle-match-report');
+    if (btnToggleMatch) {
+      btnToggleMatch.addEventListener('click', () => {
+        const el = $('match-report-notice');
+        if (!el || !state.lastMatchReport) return;
+        if (el.style.display === 'none') {
+          state.matchReportDismissed = false;
+          renderMatchReport(state.lastMatchReport);
+        } else {
+          state.matchReportDismissed = true;
+          renderMatchReport(state.lastMatchReport);
         }
       });
     }
@@ -968,6 +984,7 @@
     populateSchemaInspector();
     recomputeThresholds();
     renderAllViews();
+    switchToTab(state.activeTab || 'tab-best-funds');
   }
 
   function renderVerificationBanner(filesMeta) {
@@ -1000,11 +1017,14 @@
   function renderMatchReport(report) {
     state.lastMatchReport = report || null;
     const el = $('match-report-notice');
+    const toggleBtn = $('btn-toggle-match-report');
+    const toggleLabel = $('btn-toggle-match-report-label');
     if (!el) return;
 
     if (!report || !report.rolling_rows) {
       el.style.display = 'none';
       el.innerHTML = '';
+      if (toggleBtn) toggleBtn.style.display = 'none';
       return;
     }
 
@@ -1012,41 +1032,110 @@
     const matched = report.matched || 0;
     const viaSignature = report.matched_by_signature || 0;
     const ambiguous = (report.ambiguous_names || []).length;
+    const isWarning = (unmatched > 0 || ambiguous > 0);
 
-    if (unmatched === 0 && ambiguous === 0) {
+    const updateToolbarBtn = (visible) => {
+      if (!toggleBtn) return;
+      toggleBtn.style.display = 'inline-flex';
+      const icon = isWarning ? '⚠️' : '✓';
+      if (toggleLabel) {
+        toggleLabel.textContent = visible
+          ? `✕ Hide Match Report`
+          : `${icon} Match Report (${matched}/${report.rolling_rows})`;
+      }
+    };
+
+    if (state.matchReportDismissed) {
+      el.style.display = 'none';
+      updateToolbarBtn(false);
+      return;
+    }
+
+    el.style.display = 'flex';
+    updateToolbarBtn(true);
+
+    if (!isWarning) {
       el.className = 'match-report-notice match-ok';
-      el.style.display = 'flex';
       el.innerHTML = `
         <span class="match-icon">✓</span>
-        <div>
+        <div class="match-report-body">
           <strong>All ${report.rolling_rows} rolling-returns rows matched a fund</strong>
           ${viaSignature > 0 ? ` (${viaSignature} matched on a name variation such as "Reg"/"Regular" or "Gr"/"Growth")` : ''} —
           their rolling returns are showing in the table.
         </div>
+        <div class="match-report-actions">
+          <button type="button" class="btn-hide-match-notice" id="btn-hide-match-report" title="Hide this notice">
+            ✕ Hide
+          </button>
+        </div>
       `;
-      return;
+    } else {
+      const list = (report.unmatched_names || [])
+        .map(n => `<li>${escapeHtml(n)}</li>`).join('');
+      const ambiguousList = (report.ambiguous_names || [])
+        .map(n => `<li>${escapeHtml(n)}</li>`).join('');
+
+      el.className = 'match-report-notice match-warn';
+      el.innerHTML = `
+        <span class="match-icon">⚠️</span>
+        <div class="match-report-body">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+            <div>
+              <strong>${matched} of ${report.rolling_rows} rolling-returns rows matched a fund in the Risk-Ratios sheet</strong>
+              ${viaSignature > 0 ? ` (${viaSignature} via a name variation)` : ''}.
+              ${unmatched > 0 ? `The ${unmatched} below had no counterpart, so they were added as their own rows
+                (Sharpe / Info Ratio / Treynor will show "-" for them):` : ''}
+            </div>
+            <div class="match-report-actions">
+              <button type="button" class="btn-hide-match-notice" id="btn-hide-match-report" title="Hide this notice">
+                ✕ Hide
+              </button>
+            </div>
+          </div>
+          ${unmatched > 0 ? `
+            <ul class="match-name-list" id="match-unmatched-list">${list}</ul>
+            <div>
+              <button type="button" class="btn-toggle-match-list" id="btn-toggle-unmatched-list" data-collapsed="false">
+                ▲ Hide fund list
+              </button>
+            </div>
+          ` : ''}
+          ${ambiguous > 0 ? `
+            <div style="margin-top:8px;">
+              ${ambiguous} name(s) were too ambiguous to match safely
+              (more than one candidate shares the same name signature), so they were left unmatched:
+              <ul class="match-name-list">${ambiguousList}</ul>
+            </div>
+          ` : ''}
+        </div>
+      `;
     }
 
-    const list = (report.unmatched_names || [])
-      .map(n => `<li>${escapeHtml(n)}</li>`).join('');
-    const ambiguousList = (report.ambiguous_names || [])
-      .map(n => `<li>${escapeHtml(n)}</li>`).join('');
+    const btnHide = $('btn-hide-match-report');
+    if (btnHide) {
+      btnHide.addEventListener('click', () => {
+        state.matchReportDismissed = true;
+        el.style.display = 'none';
+        updateToolbarBtn(false);
+      });
+    }
 
-    el.className = 'match-report-notice match-warn';
-    el.style.display = 'flex';
-    el.innerHTML = `
-      <span class="match-icon">⚠️</span>
-      <div>
-        <strong>${matched} of ${report.rolling_rows} rolling-returns rows matched a fund in the Risk-Ratios sheet</strong>
-        ${viaSignature > 0 ? ` (${viaSignature} via a name variation)` : ''}.
-        ${unmatched > 0 ? `The ${unmatched} below had no counterpart, so they were added as their own rows
-          (Sharpe / Info Ratio / Treynor will show "-" for them):
-          <ul class="match-name-list">${list}</ul>` : ''}
-        ${ambiguous > 0 ? `<div style="margin-top:6px;">${ambiguous} name(s) were too ambiguous to match safely
-          (more than one candidate shares the same name signature), so they were left unmatched:
-          <ul class="match-name-list">${ambiguousList}</ul></div>` : ''}
-      </div>
-    `;
+    const btnToggleList = $('btn-toggle-unmatched-list');
+    const unmatchedList = $('match-unmatched-list');
+    if (btnToggleList && unmatchedList) {
+      btnToggleList.addEventListener('click', () => {
+        const isCollapsed = btnToggleList.dataset.collapsed === 'true';
+        if (isCollapsed) {
+          unmatchedList.style.display = 'block';
+          btnToggleList.dataset.collapsed = 'false';
+          btnToggleList.innerHTML = '▲ Hide fund list';
+        } else {
+          unmatchedList.style.display = 'none';
+          btnToggleList.dataset.collapsed = 'true';
+          btnToggleList.innerHTML = `▼ Show ${unmatched} funds`;
+        }
+      });
+    }
   }
 
   // ==========================================
@@ -1184,28 +1273,28 @@
       if (status.status === 'connected') {
         if (badge) {
           badge.classList.remove('status-offline');
-          badge.title = 'Storage Online: Synchronized';
+          badge.title = 'Server MongoDB connected';
         }
         if (text) text.textContent = 'Storage: Online';
         if (tag) {
-          tag.textContent = 'Active (Synced)';
+          tag.textContent = 'Server Connected';
           tag.classList.remove('tag-offline');
         }
         if (details) {
-          details.innerHTML = `Database online &bull; All analysis snapshots saved securely with automatic synchronization.`;
+          details.textContent = 'Connected to server MongoDB. Saved analyses and working sessions are stored on the server.';
         }
       } else {
         if (badge) {
-          badge.classList.remove('status-offline');
-          badge.title = 'Local storage active';
+          badge.classList.add('status-offline');
+          badge.title = 'Server MongoDB unreachable';
         }
-        if (text) text.textContent = 'Storage: Ready';
+        if (text) text.textContent = 'Storage: Offline';
         if (tag) {
-          tag.textContent = 'Local Active';
-          tag.classList.remove('tag-offline');
+          tag.textContent = 'Server Offline';
+          tag.classList.add('tag-offline');
         }
         if (details) {
-          details.innerHTML = `Local workstation storage active &bull; All analysis snapshots are preserved across sessions.`;
+          details.textContent = 'Server MongoDB is unreachable. Changes cannot be saved until it reconnects.';
         }
       }
     } catch (e) {
@@ -1465,6 +1554,8 @@
       setTimeout(renderCharts, 50);
     } else if (tabId === 'tab-best-funds') {
       renderBestFundsView();
+    } else if (tabId === 'tab-overview') {
+      renderFundsTable();
     }
   }
 
@@ -1580,16 +1671,21 @@
     const sel = $('filter-category');
     const bestSel = $('best-funds-cat-filter');
     const options = state.categories.map(cat => {
-      const count = state.funds.filter(f => f.category === cat).length;
+      const catNorm = cat.trim().toLowerCase();
+      const count = state.funds.filter(f => (f.category || '').trim().toLowerCase() === catNorm).length;
       const safeCat = escapeHtml(cat);
       const label = escapeHtml(getCategoryLabel(cat));
       return `<option value="${safeCat}">${label} (${count})</option>`;
     }).join('');
     if (sel) {
+      const prevVal = sel.value || state.categoryFilter || 'all';
       sel.innerHTML = '<option value="all">All Categories</option>' + options;
+      sel.value = prevVal;
     }
     if (bestSel) {
+      const prevBestVal = state.bestFundsCategoryFilter || 'all';
       bestSel.innerHTML = '<option value="all">All Categories</option>' + options;
+      bestSel.value = prevBestVal;
     }
   }
 
@@ -1906,8 +2002,8 @@
       if (rf.treynorMin !== null && (f.treynor === null || f.treynor < rf.treynorMin)) return false;
       if (rf.infoMin !== null && (f.info_ratio === null || f.info_ratio < rf.infoMin)) return false;
       if (rf.rollingMin !== null) {
-        const bestRolling = Math.max(f.rolling_3y || -999, f.rolling_5y || -999, f.rolling_1y || -999);
-        if (bestRolling < rf.rollingMin) return false;
+        const rollings = [f.rolling_1y, f.rolling_2y, f.rolling_3y, f.rolling_5y].filter(v => typeof v === 'number');
+        if (rollings.length === 0 || Math.max(...rollings) < rf.rollingMin) return false;
       }
       if (rf.aumMin !== null && (f.aum === null || f.aum < rf.aumMin)) return false;
 
@@ -1936,6 +2032,7 @@
     filtered.sort((a, b) => {
       const va = a[col];
       const vb = b[col];
+      if ((va === null || va === undefined) && (vb === null || vb === undefined)) return 0;
       if (va === null || va === undefined) return 1;
       if (vb === null || vb === undefined) return -1;
       if (typeof va === 'string') return dir * va.localeCompare(vb);
@@ -2093,12 +2190,12 @@
   }
 
   function getReturnColor(val) {
-    if (val === null || val === undefined) return '#94a3b8';
-    if (val >= 25) return '#15803d';
-    if (val >= 20) return '#16a34a';
-    if (val >= 15) return '#2563eb';
-    if (val >= 10) return '#d97706';
-    return '#dc2626';
+    if (val === null || val === undefined) return 'var(--text-muted)';
+    if (val >= 25) return '#166534';
+    if (val >= 20) return '#237346';
+    if (val >= 15) return '#245bb2';
+    if (val >= 10) return '#926014';
+    return '#a33932';
   }
 
   // ==========================================
@@ -2541,36 +2638,39 @@
     const validTreynors = allFunds.filter(f => typeof f.treynor === 'number').map(f => f.treynor);
     const portfolioAvgTreynor = validTreynors.length > 0 ? validTreynors.reduce((a, b) => a + b, 0) / validTreynors.length : 0.0;
 
-    // 2. Compute Category Averages (also full precision, same reasoning)
+    // 2. Compute Category Averages (also full precision, case-insensitive normalized)
     const catAverages = {};
     (state.categories || []).forEach(cat => {
-      const cFunds = allFunds.filter(f => f.category === cat);
+      const catNorm = (cat || '').trim().toLowerCase();
+      const cFunds = allFunds.filter(f => (f.category || '').trim().toLowerCase() === catNorm);
       const cSharpes = cFunds.filter(f => typeof f.sharpe === 'number').map(f => f.sharpe);
       const cInfos = cFunds.filter(f => typeof f.info_ratio === 'number').map(f => f.info_ratio);
       const cTreynors = cFunds.filter(f => typeof f.treynor === 'number').map(f => f.treynor);
 
-      catAverages[cat] = {
+      const catObj = {
         avgSharpe: cSharpes.length > 0 ? cSharpes.reduce((a, b) => a + b, 0) / cSharpes.length : portfolioAvgSharpe,
         avgInfo: cInfos.length > 0 ? cInfos.reduce((a, b) => a + b, 0) / cInfos.length : portfolioAvgInfo,
         avgTreynor: cTreynors.length > 0 ? cTreynors.reduce((a, b) => a + b, 0) / cTreynors.length : portfolioAvgTreynor
       };
+      catAverages[cat] = catObj;
+      catAverages[catNorm] = catObj;
     });
 
-    // 3. Evaluate Conditions 1, 2, 3:
-    // Condition 1: Sharpe > Avg
-    // Condition 2: Information Ratio > Avg
-    // Condition 3: Treynor Ratio > Avg
-    const candidateFunds = catFilter === 'all' ? allFunds : allFunds.filter(f => f.category === catFilter);
+    // 3. Evaluate Conditions 1, 2, 3 on candidate funds:
+    const candidateFunds = catFilter === 'all'
+      ? allFunds
+      : allFunds.filter(f => (f.category || '').trim().toLowerCase() === catFilter.trim().toLowerCase());
 
     const evaluated = candidateFunds.map(f => {
       let targetAvgSharpe = portfolioAvgSharpe;
       let targetAvgInfo = portfolioAvgInfo;
       let targetAvgTreynor = portfolioAvgTreynor;
 
-      if (basis === 'category' && f.category && catAverages[f.category]) {
-        targetAvgSharpe = catAverages[f.category].avgSharpe;
-        targetAvgInfo = catAverages[f.category].avgInfo;
-        targetAvgTreynor = catAverages[f.category].avgTreynor;
+      const catNorm = (f.category || '').trim().toLowerCase();
+      if (basis === 'category' && catNorm && catAverages[catNorm]) {
+        targetAvgSharpe = catAverages[catNorm].avgSharpe;
+        targetAvgInfo = catAverages[catNorm].avgInfo;
+        targetAvgTreynor = catAverages[catNorm].avgTreynor;
       }
 
       const condSharpe = typeof f.sharpe === 'number' && f.sharpe > targetAvgSharpe;
@@ -2598,11 +2698,6 @@
       };
     });
 
-    // Step 4: Shortlist funds in which all 3 conditions are met — strictly.
-    // (No "best 2 of 3" relaxation: if nothing clears all three benchmarks, the honest
-    // answer is zero qualifying funds, not a quietly-loosened shortlist.)
-    const shortlisted = evaluated.filter(f => f.passesAll3);
-
     // Step 5: Rolling Returns Period Dominance Comparison (1Y, 2Y, 3Y, 5Y)
     const horizons = [
       { key: 'rolling_1y', label: '1Y Rolling', short: '1Y' },
@@ -2614,11 +2709,8 @@
     const periodWinners = {};
 
     horizons.forEach(h => {
-      // Find highest return in this period among shortlisted funds
-      let eligible = shortlisted.filter(f => typeof f[h.key] === 'number');
-      if (eligible.length === 0) {
-        eligible = candidateFunds.filter(f => typeof f[h.key] === 'number');
-      }
+      // Find highest return in this period among evaluated candidate funds
+      const eligible = evaluated.filter(f => typeof f[h.key] === 'number');
 
       if (eligible.length > 0) {
         const maxVal = Math.max(...eligible.map(f => f[h.key]));
@@ -2634,7 +2726,7 @@
         };
 
         // Award period win to funds matching this top return
-        shortlisted.forEach(sf => {
+        evaluated.forEach(sf => {
           if (typeof sf[h.key] === 'number' && sf[h.key] === maxVal) {
             sf.periodsWon += 1;
             sf.wonHorizons.push(h.short);
@@ -2651,8 +2743,16 @@
       }
     });
 
-    // Sort Shortlisted: 1st by maximum periods won (desc), 2nd by average rolling return, 3rd by Sharpe
-    shortlisted.sort((a, b) => {
+    // Strict 3 of 3 qualified outperformers
+    const strict3Of3 = evaluated.filter(f => f.passesAll3);
+
+    // Sort evaluated funds:
+    // 1st by condition count (3 -> 2 -> 1 -> 0)
+    // 2nd by maximum periods won (desc)
+    // 3rd by average rolling return (desc)
+    // 4th by Sharpe (desc)
+    evaluated.sort((a, b) => {
+      if (b.condCount !== a.condCount) return b.condCount - a.condCount;
       if (b.periodsWon !== a.periodsWon) return b.periodsWon - a.periodsWon;
       const bRoll = typeof b.rolling_avg === 'number' ? b.rolling_avg : -999;
       const aRoll = typeof a.rolling_avg === 'number' ? a.rolling_avg : -999;
@@ -2660,25 +2760,34 @@
       return (b.sharpe || 0) - (a.sharpe || 0);
     });
 
+    // Shortlist determination:
+    // When a specific category is chosen, display all funds in that category ranked!
+    // When "all" categories are chosen, display strict 3/3 qualified funds (or all evaluated if none cleared 3/3)
+    let shortlisted;
+    if (catFilter !== 'all') {
+      shortlisted = evaluated;
+    } else {
+      shortlisted = strict3Of3.length > 0 ? strict3Of3 : evaluated;
+    }
+
     const champion = shortlisted.length > 0 ? shortlisted[0] : null;
 
     state.bestFundsShortlist = shortlisted;
     state.bestFundsChampion = champion;
 
+    const catFilterNorm = catFilter.trim().toLowerCase();
     const benchmarkMetrics = {
-      avgSharpe: +(basis === 'category' && catFilter !== 'all' && catAverages[catFilter] ? catAverages[catFilter].avgSharpe : portfolioAvgSharpe).toFixed(2),
-      avgInfo: +(basis === 'category' && catFilter !== 'all' && catAverages[catFilter] ? catAverages[catFilter].avgInfo : portfolioAvgInfo).toFixed(2),
-      avgTreynor: +(basis === 'category' && catFilter !== 'all' && catAverages[catFilter] ? catAverages[catFilter].avgTreynor : portfolioAvgTreynor).toFixed(2)
+      avgSharpe: +(basis === 'category' && catFilter !== 'all' && catAverages[catFilterNorm] ? catAverages[catFilterNorm].avgSharpe : portfolioAvgSharpe).toFixed(2),
+      avgInfo: +(basis === 'category' && catFilter !== 'all' && catAverages[catFilterNorm] ? catAverages[catFilterNorm].avgInfo : portfolioAvgInfo).toFixed(2),
+      avgTreynor: +(basis === 'category' && catFilter !== 'all' && catAverages[catFilterNorm] ? catAverages[catFilterNorm].avgTreynor : portfolioAvgTreynor).toFixed(2)
     };
 
-    // How much of the shortlist could actually take part in step 5. Funds with no
-    // rolling-return data can never win a period, so the champion is only meaningful
-    // relative to the funds that had data to compete with.
     const rollingKeys = ['rolling_1y', 'rolling_2y', 'rolling_3y', 'rolling_5y'];
     const withRollingCount = shortlisted.filter(f => rollingKeys.some(k => typeof f[k] === 'number')).length;
 
     return {
       shortlisted,
+      strict3Of3,
       champion,
       periodWinners,
       benchmarkMetrics,
@@ -2705,15 +2814,27 @@
     if (treynorValEl) treynorValEl.textContent = `> ${benchmarkMetrics.avgTreynor}`;
 
     const shortCount = shortlisted.length;
+    const strictCount = (data.strict3Of3 || []).length;
+    const catFilter = state.bestFundsCategoryFilter || 'all';
+
     if (shortlistCountEl) shortlistCountEl.textContent = shortCount;
     if (tabCountBestEl) tabCountBestEl.textContent = shortCount;
     if (bestTableCountEl) bestTableCountEl.textContent = shortCount;
 
     if (shortlistPctEl) {
-      const pct = totalCandidates > 0 ? ((shortCount / totalCandidates) * 100).toFixed(1) : 0;
-      shortlistPctEl.textContent = shortCount === 0
-        ? `No fund out of ${totalCandidates} meets all 3 conditions`
-        : `${shortCount} of ${totalCandidates} funds (${pct}%) — 3/3 conditions met`;
+      if (catFilter !== 'all') {
+        const catLabel = getCategoryLabel(catFilter);
+        if (strictCount > 0) {
+          shortlistPctEl.textContent = `${strictCount} of ${totalCandidates} funds cleared 3/3 benchmarks • Showing all ${totalCandidates} ranked`;
+        } else {
+          shortlistPctEl.textContent = `Showing all ${totalCandidates} funds in ${catLabel} ranked by performance`;
+        }
+      } else {
+        const pct = totalCandidates > 0 ? ((shortCount / totalCandidates) * 100).toFixed(1) : 0;
+        shortlistPctEl.textContent = shortCount === 0
+          ? `No fund out of ${totalCandidates} meets all 3 conditions`
+          : `${shortCount} of ${totalCandidates} funds (${pct}%) — 3/3 conditions met`;
+      }
     }
 
     // 2. Render Champion Showcase Card
@@ -2722,18 +2843,27 @@
       if (champion) {
         const wonText = champion.periodsWon > 0
           ? `${champion.periodsWon} of 4 Rolling Horizons Won (${champion.wonHorizons.join(', ')})`
-          : `Dominant 3-Factor Risk Score (Sharpe: ${champion.sharpe || '-'})`;
+          : (champion.passesAll3
+            ? `Dominant 3-Factor Risk Score (Sharpe: ${champion.sharpe || '-'})`
+            : (champion.condCount > 0
+              ? `Cleared ${champion.condCount} of 3 Benchmark Ratios`
+              : (champion.rolling_avg !== null ? `Top Rolling Return CAGR (${champion.rolling_avg.toFixed(2)}%)` : `Top Ranked in ${getCategoryLabel(champion.category)}`)));
 
-        const bestReturnVal = champion.periodsWon > 0
-          ? Math.max(champion.rolling_1y || 0, champion.rolling_2y || 0, champion.rolling_3y || 0, champion.rolling_5y || 0).toFixed(2) + '%'
-          : (champion.rolling_avg !== null ? champion.rolling_avg.toFixed(2) + '%' : '–');
+        const crownTag = champion.passesAll3
+          ? '#1 Champion Best Mutual Fund'
+          : (catFilter !== 'all' ? `#1 Top Fund in ${escapeHtml(getCategoryLabel(champion.category))}` : '#1 Top Ranked Fund');
+
+        const rollVals = [champion.rolling_1y, champion.rolling_2y, champion.rolling_3y, champion.rolling_5y].filter(v => typeof v === 'number');
+        const bestReturnVal = champion.periodsWon > 0 && rollVals.length > 0
+          ? Math.max(...rollVals).toFixed(2) + '%'
+          : (typeof champion.rolling_avg === 'number' ? champion.rolling_avg.toFixed(2) + '%' : '–');
 
         champContainer.innerHTML = `
           <div class="champion-card-inner">
             <div class="champion-badge-row">
               <div class="champion-crown-tag">
                 <span>👑</span>
-                <span>#1 Champion Best Mutual Fund</span>
+                <span>${crownTag}</span>
               </div>
               <div class="champion-periods-won-badge">
                 <span>★</span>
@@ -2857,10 +2987,27 @@
         tbody.innerHTML = shortlisted.map((f, i) => {
           const isChamp = (i === 0);
           const rankBadge = isChamp
-            ? '<span class="rank-badge rank-1" style="background:#fef08a;color:#854d0e;font-weight:900;">👑 1</span>'
-            : (i === 1 ? '<span class="rank-badge rank-2">🥈 2</span>' : (i === 2 ? '<span class="rank-badge rank-3">🥉 3</span>' : `<span class="rank-badge">${i + 1}</span>`));
+            ? '<span class="rank-badge rank-1" style="background:linear-gradient(135deg,#fef08a 0%,#fde047 100%);color:#854d0e;font-weight:900;border:1px solid #facc15;box-shadow:0 1px 4px rgba(245,158,11,0.25);">👑 1</span>'
+            : (i === 1
+              ? '<span class="rank-badge rank-2" style="background:linear-gradient(135deg,#f1f5f9 0%,#e2e8f0 100%);color:#334155;font-weight:800;border:1px solid #cbd5e1;">🥈 2</span>'
+              : (i === 2
+                ? '<span class="rank-badge rank-3" style="background:linear-gradient(135deg,#ffedd5 0%,#fed7aa 100%);color:#9a3412;font-weight:800;border:1px solid #fdba74;">🥉 3</span>'
+                : `<span class="rank-badge" style="background:#f8fafc;color:#64748b;font-weight:700;border:1px solid #e2e8f0;">${i + 1}</span>`));
 
-          const fmtDelta = d => d !== null ? (d >= 0 ? `+${d.toFixed(2)}` : d.toFixed(2)) : '-';
+          const rowBgStyle = isChamp
+            ? 'background: linear-gradient(90deg, rgba(254, 243, 199, 0.65) 0%, rgba(254, 249, 195, 0.45) 50%, rgba(254, 252, 232, 0.25) 100%); border-left: 4px solid #f59e0b;'
+            : (i === 1
+              ? 'background: linear-gradient(90deg, rgba(241, 245, 249, 0.8) 0%, rgba(248, 250, 252, 0.5) 100%); border-left: 4px solid #94a3b8;'
+              : (i === 2
+                ? 'background: linear-gradient(90deg, rgba(255, 237, 213, 0.6) 0%, rgba(255, 247, 237, 0.35) 100%); border-left: 4px solid #f97316;'
+                : `background: ${i % 2 === 0 ? '#ffffff' : '#fbfcfd'}; border-left: 4px solid transparent;`));
+
+          const renderDelta = d => {
+            if (d === null || d === undefined) return '<span style="font-size:0.7rem;color:var(--text-muted);display:block;">-</span>';
+            const color = d >= 0 ? 'var(--emerald)' : 'var(--rose)';
+            const sign = d >= 0 ? '+' : '';
+            return `<span style="font-size:0.7rem;color:${color};display:block;font-weight:700;">(${sign}${d.toFixed(2)})</span>`;
+          };
           const fmtVal = v => v !== null && v !== undefined ? v.toFixed(2) + '%' : '-';
 
           // Check if cell won
@@ -2873,27 +3020,44 @@
             ? `<span class="period-win-badge ${isChamp ? 'champ-win' : ''}">★ ${f.periodsWon} Horizon${f.periodsWon > 1 ? 's' : ''}</span>`
             : '<span style="color:var(--text-muted);font-size:0.74rem;">0</span>';
 
-          const statusBadge = isChamp
-            ? '<span class="selection-status-badge status-champion">👑 Best Mutual Fund</span>'
-            : '<span class="selection-status-badge status-qualified">✓ 3/3 Ratios Passed</span>';
+          let statusBadge;
+          if (isChamp) {
+            statusBadge = f.passesAll3
+              ? '<span class="selection-status-badge status-champion">👑 Best Mutual Fund</span>'
+              : '<span class="selection-status-badge status-champion" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">👑 Top Performer</span>';
+          } else if (f.passesAll3) {
+            statusBadge = '<span class="selection-status-badge status-qualified">✓ 3/3 Ratios Passed</span>';
+          } else if (f.condCount === 2) {
+            statusBadge = '<span class="selection-status-badge" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">⚡ 2/3 Passed</span>';
+          } else if (f.condCount === 1) {
+            statusBadge = '<span class="selection-status-badge" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">• 1/3 Passed</span>';
+          } else if (typeof f.rolling_avg === 'number' && !isNaN(f.rolling_avg)) {
+            statusBadge = '<span class="selection-status-badge" style="background:#f8fafc;color:#64748b;border:1px solid #cbd5e1;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;">🔄 Rolling Performer</span>';
+          } else {
+            statusBadge = '<span class="selection-status-badge" style="background:#f8fafc;color:#94a3b8;border:1px solid #e2e8f0;padding:2px 8px;border-radius:12px;font-size:0.75rem;">Candidate</span>';
+          }
+
+          const sharpeCls = f.sharpe !== null ? (f.condSharpe ? 'sharpe-high' : 'sharpe-low') : 'sharpe-na';
+          const infoColor = f.info_ratio !== null ? (f.condInfo ? 'var(--emerald)' : 'var(--rose)') : 'var(--text-muted)';
+          const treynorColor = f.treynor !== null ? (f.condTreynor ? 'var(--emerald)' : 'var(--rose)') : 'var(--text-muted)';
 
           return `
-            <tr style="${isChamp ? 'background:rgba(254, 243, 199, 0.25);' : ''}">
+            <tr style="${rowBgStyle}">
               <td class="text-center">${rankBadge}</td>
               <td class="fund-name-cell"><span class="fund-name-text" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span></td>
               <td><span class="category-pill" title="${escapeHtml(f.category)}">${escapeHtml(getCategoryLabel(f.category))}</span></td>
               <td class="text-right num-val" style="font-weight:600;">${f.aum !== null ? '₹' + Math.round(f.aum).toLocaleString('en-IN') : '-'}</td>
               <td class="text-center">
-                <span class="sharpe-badge sharpe-high">${f.sharpe !== null ? f.sharpe.toFixed(2) : '-'}</span>
-                <span style="font-size:0.7rem;color:#059669;display:block;font-weight:700;">(${fmtDelta(f.sharpeDelta)})</span>
+                <span class="sharpe-badge ${sharpeCls}">${f.sharpe !== null ? f.sharpe.toFixed(2) : '-'}</span>
+                ${renderDelta(f.sharpeDelta)}
               </td>
               <td class="text-center">
-                <span style="font-weight:700;color:#2563eb;">${f.info_ratio !== null ? f.info_ratio.toFixed(2) : '-'}</span>
-                <span style="font-size:0.7rem;color:#059669;display:block;font-weight:700;">(${fmtDelta(f.infoDelta)})</span>
+                <span style="font-weight:700;color:${infoColor};">${f.info_ratio !== null ? f.info_ratio.toFixed(2) : '-'}</span>
+                ${renderDelta(f.infoDelta)}
               </td>
               <td class="text-center">
-                <span style="font-weight:700;color:#7c3aed;">${f.treynor !== null ? f.treynor.toFixed(2) : '-'}</span>
-                <span style="font-size:0.7rem;color:#059669;display:block;font-weight:700;">(${fmtDelta(f.treynorDelta)})</span>
+                <span style="font-weight:700;color:${treynorColor};">${f.treynor !== null ? f.treynor.toFixed(2) : '-'}</span>
+                ${renderDelta(f.treynorDelta)}
               </td>
               <td class="text-right num-val ${won1Y}" style="color:${getReturnColor(f.rolling_1y)}">${fmtVal(f.rolling_1y)}</td>
               <td class="text-right num-val ${won2Y}" style="color:${getReturnColor(f.rolling_2y)}">${fmtVal(f.rolling_2y)}</td>

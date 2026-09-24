@@ -1,0 +1,38 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache & compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Local databases & secrets
+records.db
+.app_secret
+.env
+data/
+*.local
+
+# Git
+.git/
+.gitignore
+
+# Stale / legacy root files
+app.js
+index.html
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Weekly server log files and rotated archives
+logs/
+
+# Verification files are not needed in production builds.
+tests/

@@ -3,7 +3,6 @@ import io
 import re
 import sys
 import math
-import sqlite3
 import json
 import time
 import uuid
@@ -11,8 +10,9 @@ import secrets
 import bcrypt
 import certifi
 import jwt
+import difflib
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple, Set
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Response, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +23,7 @@ import numpy as np
 import pymongo
 from bson import ObjectId
 from dotenv import load_dotenv
+from app_logging import configure_logging, RequestLoggingMiddleware
 
 # Load configuration and secrets from a local .env file, which is gitignored.
 # override=False means real environment variables always win, so a hosted
@@ -32,13 +33,17 @@ load_dotenv(
     override=False,
 )
 
+WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
+logger = configure_logging(WORKSPACE_DIR)
+
 app = FastAPI(
     title="Mutual Fund & Dynamic Excel Analytics Platform",
     description="High-performance mutual fund analysis with Sharpe Ratio, Rolling Returns, PyMongo & MongoDB Compass integration.",
-    version="2.3.0"
+    version="2.4.0"
 )
 
-WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.add_middleware(RequestLoggingMiddleware)
+
 TEMPLATES_DIR = os.path.join(WORKSPACE_DIR, "templates")
 STATIC_DIR = os.path.join(WORKSPACE_DIR, "static")
 STATIC_CSS_DIR = os.path.join(STATIC_DIR, "css")
@@ -47,7 +52,7 @@ STATIC_IMAGES_DIR = os.path.join(STATIC_DIR, "images")
 
 # Cache-busting token appended to css/js URLs. Bump it after a frontend change
 # so browsers pick up the new file instead of a stale cached copy.
-ASSET_VERSION = os.getenv("ASSET_VERSION", "8.0.0")
+ASSET_VERSION = os.getenv("ASSET_VERSION", "8.0.2")
 
 # Ensure static & templates exist
 for _d in (STATIC_DIR, STATIC_CSS_DIR, STATIC_JS_DIR, STATIC_IMAGES_DIR, TEMPLATES_DIR):
@@ -78,6 +83,44 @@ def clean_val(v):
         return s
 
 
+def normalize_excel_return_percentages(df, workbook, sheet_name, header_row):
+    """Convert explicitly percent-formatted return cells to percentage points.
+
+    A plain 0.12 stays 0.12; a numeric 0.12 displayed as 12% becomes 12.
+    Ratio, AUM and other columns are left untouched.
+    """
+    mapping = map_fund_columns(df)
+    columns = {df.columns.get_loc(mapping[key]) for key in
+               ("rolling_1y", "rolling_2y", "rolling_3y", "rolling_5y")
+               if mapping.get(key) is not None}
+    if not columns:
+        return
+
+    def apply(row_index, column_index, number_format):
+        # Quoted/escaped percent symbols are literals, not Excel scaling rules.
+        fmt = re.sub(r'"[^"]*"|\\.|_.|\*.', '', number_format or '')
+        if "%" not in fmt:
+            return
+        value = df.iat[row_index, column_index]
+        if pd.notna(value) and isinstance(value, (int, float, np.number)):
+            df.iat[row_index, column_index] = float(value) * 100
+
+    if hasattr(workbook, "sheet_by_name"):  # xlrd, with formatting_info=True
+        sheet = workbook.sheet_by_name(sheet_name)
+        for row in range(len(df)):
+            for col in columns:
+                cell = sheet.cell(header_row + 1 + row, col)
+                xf = workbook.xf_list[cell.xf_index]
+                apply(row, col, workbook.format_map[xf.format_key].format_str)
+    else:  # openpyxl: enumerate rows once (important for read-only workbooks).
+        sheet = workbook[sheet_name]
+        for row, cells in enumerate(sheet.iter_rows(
+                min_row=header_row + 2, max_row=header_row + 1 + len(df),
+                min_col=1, max_col=max(columns) + 1)):
+            for col in columns:
+                apply(row, col, cells[col].number_format)
+
+
 def smart_read_sheet(file_bytes: bytes, filename: str, sheet_name=None) -> Dict[str, Any]:
     """
     Reads an Excel or CSV file dynamically, discovers sheets,
@@ -95,12 +138,15 @@ def smart_read_sheet(file_bytes: bytes, filename: str, sheet_name=None) -> Dict[
         active_sheet = "Default"
     else:
         # Excel file (.xls or .xlsx)
-        xl = pd.ExcelFile(io.BytesIO(file_bytes))
+        xl = pd.ExcelFile(io.BytesIO(file_bytes),
+                          engine_kwargs={"formatting_info": True} if ext == ".xls" else {})
         sheets = xl.sheet_names
         active_sheet = sheet_name if sheet_name in sheets else sheets[0]
         df = xl.parse(active_sheet, header=None)
 
     if df.empty or len(df) < 2:
+        if ext != ".csv":
+            xl.close()
         return {"df": pd.DataFrame(), "sheets": sheets, "active_sheet": active_sheet, "header_row": 0}
 
     # Find the most likely header row by scoring text columns and non-null count
@@ -154,6 +200,11 @@ def smart_read_sheet(file_bytes: bytes, filename: str, sheet_name=None) -> Dict[
 
     data_df = df.iloc[best_header_row + 1:].copy()
     data_df.columns = clean_headers
+    if ext != ".csv":
+        try:
+            normalize_excel_return_percentages(data_df, xl.book, active_sheet, best_header_row)
+        finally:
+            xl.close()
     
     # Drop rows that are completely empty or look like trailing disclaimer text
     data_df = data_df.dropna(how="all")
@@ -203,15 +254,45 @@ def map_fund_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
     }
     
     cols = df.columns.tolist()
+
+    # Step 1: Detect Fund / Scheme Name column with priority
+    # Exclude metadata columns that contain the word "fund" or "scheme" but are NOT the fund name
+    exclude_name_words = [
+        "house", "manager", "family", "size", "rating", "rank", "code",
+        "class", "benchmark", "type", "category", "sub category", "corpus",
+        "aum", "asset", "url", "link", "idcw", "nav", "date"
+    ]
+    
+    # Priority 1: Exact column matches for scheme name
+    for c in cols:
+        cl = c.lower().replace("_", " ").replace("-", " ").strip()
+        if cl in ["scheme name", "fund name", "scheme", "fund", "security name", "security", "scheme / plan name", "instrument name"]:
+            mapping["name"] = c
+            break
+
+    # Priority 2: Contains "scheme name" or "fund name"
+    if not mapping["name"]:
+        for c in cols:
+            cl = c.lower().replace("_", " ").replace("-", " ").strip()
+            if any(k in cl for k in ["scheme name", "fund name", "scheme / plan", "security name"]):
+                if not any(ex in cl for ex in ["house", "manager", "rating", "rank", "size"]):
+                    mapping["name"] = c
+                    break
+
+    # Priority 3: Contains "scheme", "fund", or "security" without exclude words
+    if not mapping["name"]:
+        for c in cols:
+            cl = c.lower().replace("_", " ").replace("-", " ").strip()
+            if any(k in cl for k in ["scheme", "fund", "security"]):
+                if not any(ex in cl for ex in exclude_name_words):
+                    mapping["name"] = c
+                    break
     
     for c in cols:
         cl = c.lower().replace("_", " ").replace("-", " ").strip()
         
-        # Name
-        if not mapping["name"] and any(k in cl for k in ["scheme name", "scheme", "fund name", "fund", "security"]):
-            mapping["name"] = c
         # Category
-        elif not mapping["category"] and any(k in cl for k in ["category", "asset class", "type", "sub category"]):
+        if not mapping["category"] and any(k in cl for k in ["category", "asset class", "type", "sub category"]):
             mapping["category"] = c
         # AUM
         elif not mapping["aum"] and any(k in cl for k in ["aum", "asset", "corpus", "size"]):
@@ -229,7 +310,7 @@ def map_fund_columns(df: pd.DataFrame) -> Dict[str, Optional[str]]:
         elif not mapping["sortino"] and any(k in cl for k in ["sortino", "sortino ratio"]):
             mapping["sortino"] = c
         # Information Ratio
-        elif not mapping["info_ratio"] and any(k in cl for k in ["information ratio", "info ratio", "info_ratio", "ir"]):
+        elif not mapping["info_ratio"] and (any(k in cl for k in ["information ratio", "info ratio"]) or re.search(r"\bir\b", cl)):
             mapping["info_ratio"] = c
         # Treynor Ratio
         elif not mapping["treynor"] and any(k in cl for k in ["treynor", "treynor ratio"]):
@@ -478,90 +559,307 @@ def compute_records_analysis(records: List[Dict[str, Any]], custom_benchmark: Op
 # ==========================================
 # SCHEME-NAME MATCHING
 # ==========================================
-# Plan / option wording. These are canonicalised (not dropped) because Direct and
-# Regular are genuinely different share classes with different returns — collapsing
-# them would merge one plan's rolling returns onto the other's row.
-_PLAN_TOKEN_CANON = {
-    "reg": "regular", "regular": "regular",
-    "dir": "direct", "direct": "direct",
+_PLAN_MAP = {
+    "reg": "regular", "regular": "regular", "rp": "regular",
+    "dir": "direct", "direct": "direct", "dp": "direct",
     "gr": "growth", "growth": "growth", "g": "growth",
     "idcw": "idcw", "div": "idcw", "divd": "idcw", "dividend": "idcw",
     "payout": "payout", "reinv": "reinvest", "reinvest": "reinvest",
+    "bonus": "bonus"
 }
 
-# Filler words that carry no identifying information at all.
-_NOISE_TOKENS = {"fund", "funds", "plan", "plans", "scheme", "schemes", "the", "of", "and"}
+# Noise tokens that carry no fund identity
+_NOISE_TOKENS = {
+    "fund", "funds", "plan", "plans", "scheme", "schemes",
+    "the", "of", "and", "mutual", "portfolio", "trust",
+    "series", "option", "options", "class"
+}
+
+_COMPOUND_REPLACEMENTS = [
+    (r'\b(small|mid|large|flexi|multi|micro|mega)cap\b', r'\1 cap'),
+    (r'\b(tax)saver\b', r'\1 saver'),
+    (r'\b(index)fund\b', r'\1 fund'),
+    (r'\b(blue)chip\b', r'\1 chip'),
+]
+
+_CATEGORY_ABBREVIATIONS = [
+    (r'\bretrmnt\b', 'retirement'),
+    (r'\bchildrens\b', 'children'),
+    (r'\bchildren\'s\b', 'children'),
+    (r'\bcons\b', 'conservative'),
+    (r'\bag\b', 'aggressive'),
+    (r'\baggr\b', 'aggressive'),
+    (r'\bdyn\b', 'dynamic'),
+    (r'\bmod\b', 'moderate'),
+    (r'\bsch\b', 'scheme'),
+    (r'\bsavngs\b', 'savings'),
+    (r'\bsavings\b', 'savings'),
+    (r'\byojna\b', 'yojana'),
+    (r'\bopp\b', 'opportunities'),
+    (r'\bopps\b', 'opportunities'),
+    (r'\bopportunity\b', 'opportunities'),
+    (r'\beq\b', 'equity'),
+    (r'\bequities\b', 'equity'),
+    (r'\bbal\b', 'balanced'),
+    (r'\badv\b', 'advantage'),
+]
+
+_AMC_ALIASES = [
+    (r'\bicici\s+pru\b', 'icici prudential'),
+    (r'\bppfas\b', 'parag parikh'),
+    (r'\babsl\b', 'aditya birla sun life'),
+    (r'\bbirla\s+sun\s+life\b', 'aditya birla sun life'),
+    (r'\baditya\s+birla\b', 'aditya birla sun life'),
+    (r'\bfranklin\s+templeton\b', 'franklin india'),
+    (r'\bkotak\s+mahindra\b', 'kotak'),
+    (r'\bnippon\s+india\b', 'nippon'),
+    (r'\bmirae\s+asset\b', 'mirae'),
+    (r'\bquant\s+mutual\b', 'quant'),
+    (r'\btata\s+mutual\b', 'tata'),
+    (r'\buti\s+mutual\b', 'uti'),
+    (r'\bidfc\b', 'bandhan'),
+]
+
+
+def clean_scheme_name(name: Any) -> str:
+    """Cleans punctuation, prefixes, AMC acronyms, and compound words."""
+    if not name:
+        return ""
+    text = str(name).lower().strip()
+    text = text.replace("&", " and ")
+    
+    # Strip metadata in parentheses like (formerly ...), (benchmark ...), (tier 1), etc.
+    text = re.sub(r'\((formerly|erstwhile|benchmark|tier|star|isin|bse|nse)[^)]*\)', ' ', text)
+    
+    # Strip common category prefixes like "Equity : Small Cap - " or "Large Cap: "
+    text = re.sub(r'^(equity|debt|hybrid|other)\s*:\s*([a-z\s]+-\s*)?', ' ', text)
+    text = re.sub(r'^(large|mid|small|flexi|multi)\s*cap\s*:\s*', ' ', text)
+    
+    # Standardize compound words like "smallcap" -> "small cap"
+    for pat, repl in _COMPOUND_REPLACEMENTS:
+        text = re.sub(pat, repl, text)
+
+    # Standardize category and scheme abbreviations (e.g. retrmnt -> retirement)
+    for pat, repl in _CATEGORY_ABBREVIATIONS:
+        text = re.sub(pat, repl, text)
+        
+    # Standardize AMC aliases
+    for pat, repl in _AMC_ALIASES:
+        text = re.sub(pat, repl, text)
+        
+    # Replace non-alphanumeric with spaces
+    text = re.sub(r'[^a-z0-9]+', ' ', text)
+    return text.strip()
 
 
 def normalized_scheme_key(name: Any) -> str:
-    """Strict key: the name with every non-alphanumeric character removed."""
-    return re.sub(r'[^a-zA-Z0-9]', '', str(name).lower())
+    """Strict key: clean alphanumeric."""
+    cleaned = clean_scheme_name(name)
+    return re.sub(r'[^a-z0-9]', '', cleaned)
 
 
-def scheme_signature(name: Any) -> frozenset:
-    """
-    Order-insensitive identity for a scheme name, tolerant of the cosmetic differences
-    that appear between sheets ("Reg" vs "Regular", "Gr" vs "Growth", a missing "Fund",
-    stray double spaces, "&" vs "and", punctuation) while still keeping every token that
-    actually distinguishes one scheme from another.
-
-    "HDFC Mid Cap Fund Reg Gr"  -> {hdfc, mid, cap, regular, growth}
-    "HDFC Mid Cap Regular Growth" -> {hdfc, mid, cap, regular, growth}   (same -> match)
-    "Baroda BNP Paribas Large Cap Reg Gr" -> {baroda, bnp, paribas, large, cap, regular, growth}
-    "Baroda BNP Paribas Mid Cap Reg Gr"   -> {baroda, bnp, paribas, mid,   cap, regular, growth}
-                                             (differ on large/mid -> correctly NOT a match)
-    """
-    text = str(name).lower().replace("&", " and ")
-    tokens = re.findall(r'[a-z0-9]+', text)
-    signature = set()
+def extract_scheme_tokens(name: Any) -> Tuple[Set[str], Set[str]]:
+    """Splits fund name into core distinguishing tokens and plan/share-class tokens."""
+    cleaned = clean_scheme_name(name)
+    tokens = re.findall(r'[a-z0-9]+', cleaned)
+    core = set()
+    plan = set()
     for tok in tokens:
         if tok in _NOISE_TOKENS:
             continue
-        signature.add(_PLAN_TOKEN_CANON.get(tok, tok))
-    return frozenset(signature)
+        if tok in _PLAN_MAP:
+            plan.add(_PLAN_MAP[tok])
+        else:
+            core.add(tok)
+    return core, plan
+
+
+def are_plans_compatible(plan_a: Set[str], plan_b: Set[str]) -> bool:
+    """
+    Prevents cross-contamination between Direct and Regular share classes or Growth vs IDCW.
+    If neither or only one specifies a plan, returns True (asymmetric tolerance).
+    """
+    if "direct" in plan_a and "regular" in plan_b:
+        return False
+    if "regular" in plan_a and "direct" in plan_b:
+        return False
+    if "growth" in plan_a and "idcw" in plan_b:
+        return False
+    if "idcw" in plan_a and "growth" in plan_b:
+        return False
+    return True
+
+
+def scheme_signature(name: Any) -> frozenset:
+    """Returns the set of core tokens for backward compatibility."""
+    core, _ = extract_scheme_tokens(name)
+    return frozenset(core)
 
 
 def build_rolling_matcher(rolling_funds: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Indexes rolling-returns records for lookup by exact key first, then by signature.
-    A signature shared by more than one record is marked ambiguous and never used —
-    guessing between two candidate schemes is worse than leaving a row unmatched.
+    Indexes rolling-returns records for multi-tier matching:
+    1. Exact normalized key
+    2. Full signature (core + plan)
+    3. Core signature (tolerant of omitted Regular/Growth)
+    4. Token subset / superset
+    5. Jaccard token similarity
+    6. SequenceMatcher fuzzy similarity
     """
-    by_key: Dict[str, Dict[str, Any]] = {}
-    by_signature: Dict[frozenset, List[Dict[str, Any]]] = {}
+    records = []
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+    by_full_sig: Dict[frozenset, List[Dict[str, Any]]] = {}
+    by_core_sig: Dict[frozenset, List[Dict[str, Any]]] = {}
 
     for rf in rolling_funds:
-        name = rf.get("name")
-        if not name:
+        raw_name = rf.get("name")
+        if not raw_name:
             continue
-        by_key.setdefault(normalized_scheme_key(name), rf)
-        by_signature.setdefault(scheme_signature(name), []).append(rf)
+        core, plan = extract_scheme_tokens(raw_name)
+        key = normalized_scheme_key(raw_name)
+        full_sig = frozenset(core | plan)
+        core_sig = frozenset(core)
+        
+        entry = {
+            "fund": rf,
+            "raw_name": raw_name,
+            "key": key,
+            "core": core,
+            "plan": plan,
+            "full_sig": full_sig,
+            "core_sig": core_sig,
+            "cleaned": clean_scheme_name(raw_name)
+        }
+        records.append(entry)
+        by_key.setdefault(key, []).append(entry)
+        by_full_sig.setdefault(full_sig, []).append(entry)
+        by_core_sig.setdefault(core_sig, []).append(entry)
 
-    ambiguous = {sig for sig, recs in by_signature.items() if len(recs) > 1}
-    return {"by_key": by_key, "by_signature": by_signature, "ambiguous": ambiguous}
+    return {
+        "records": records,
+        "by_key": by_key,
+        "by_full_sig": by_full_sig,
+        "by_core_sig": by_core_sig,
+    }
 
 
-def match_rolling_record(matcher: Dict[str, Any], name: Any) -> Dict[str, Any]:
+def match_rolling_record(matcher: Dict[str, Any], name: Any, consumed_ids: Optional[Set[int]] = None) -> Dict[str, Any]:
     """
-    Returns {"record": <rolling record or None>, "how": "exact"|"signature"|None,
-             "ambiguous": bool}. Matching is deliberately conservative: an exact
-    normalized-name hit wins; otherwise a signature hit is used only when exactly one
-    rolling record carries that signature.
+    Matches a fund name against rolling records using multi-tiered resolution:
+    - Tier 1: Exact alphanumeric key
+    - Tier 2: Full signature (core + plan)
+    - Tier 3: Core signature (plan compatible or omitted)
+    - Tier 4: Token subset / superset
+    - Tier 5: Jaccard token similarity
+    - Tier 6: Fuzzy SequenceMatcher fallback
     """
     if not name:
         return {"record": None, "how": None, "ambiguous": False}
+        
+    consumed = consumed_ids or set()
+    raw_query = str(name)
+    q_cleaned = clean_scheme_name(raw_query)
+    q_key = normalized_scheme_key(raw_query)
+    q_core, q_plan = extract_scheme_tokens(raw_query)
+    q_full_sig = frozenset(q_core | q_plan)
+    q_core_sig = frozenset(q_core)
 
-    exact = matcher["by_key"].get(normalized_scheme_key(name))
-    if exact is not None:
-        return {"record": exact, "how": "exact", "ambiguous": False}
+    def is_available(entry: Dict[str, Any]) -> bool:
+        # Similar spelling cannot override an explicit size, index or series identity.
+        identity_tokens = {"large", "mid", "small", "micro", "mega", "flexi", "multi", "index", "etf", "fof"}
+        query_identity = (q_core & identity_tokens) | {t for t in q_core if t.isdigit()}
+        entry_core = entry["core"]
+        entry_identity = (entry_core & identity_tokens) | {t for t in entry_core if t.isdigit()}
+        return id(entry["fund"]) not in consumed and query_identity == entry_identity
 
-    sig = scheme_signature(name)
-    if sig in matcher["ambiguous"]:
+    # Tier 1: Exact normalized key match
+    key_candidates = [e for e in matcher["by_key"].get(q_key, []) if is_available(e)]
+    if len(key_candidates) == 1:
+        return {"record": key_candidates[0]["fund"], "how": "exact", "ambiguous": False}
+    elif len(key_candidates) > 1:
+        compat = [e for e in key_candidates if are_plans_compatible(q_plan, e["plan"])]
+        if len(compat) == 1:
+            return {"record": compat[0]["fund"], "how": "exact", "ambiguous": False}
+
+    # Tier 2: Full signature match (core + plan tokens exact match)
+    full_sig_cands = [e for e in matcher["by_full_sig"].get(q_full_sig, []) if is_available(e)]
+    if len(full_sig_cands) == 1:
+        return {"record": full_sig_cands[0]["fund"], "how": "signature", "ambiguous": False}
+    elif len(full_sig_cands) > 1:
         return {"record": None, "how": None, "ambiguous": True}
 
-    candidates = matcher["by_signature"].get(sig)
-    if candidates and len(candidates) == 1:
-        return {"record": candidates[0], "how": "signature", "ambiguous": False}
+    # Tier 3: Core signature match (core matches, plan compatible or omitted in one sheet)
+    core_sig_cands = [e for e in matcher["by_core_sig"].get(q_core_sig, []) if is_available(e)]
+    compat_core = [e for e in core_sig_cands if are_plans_compatible(q_plan, e["plan"])]
+    if len(compat_core) == 1:
+        return {"record": compat_core[0]["fund"], "how": "signature", "ambiguous": False}
+    elif len(compat_core) > 1:
+        exact_plan = [e for e in compat_core if q_plan == e["plan"]]
+        if len(exact_plan) == 1:
+            return {"record": exact_plan[0]["fund"], "how": "signature", "ambiguous": False}
+        return {"record": None, "how": None, "ambiguous": True}
+
+    # Tier 4: Token subset / superset core match
+    if len(q_core) >= 2:
+        subset_cands = []
+        for e in matcher["records"]:
+            if not is_available(e):
+                continue
+            if not are_plans_compatible(q_plan, e["plan"]):
+                continue
+            e_core = e["core"]
+            if len(e_core) < 2:
+                continue
+            overlap = q_core & e_core
+            max_len = max(len(q_core), len(e_core))
+            if (q_core.issubset(e_core) or e_core.issubset(q_core)) and (len(overlap) / max_len >= 0.70):
+                subset_cands.append((len(overlap) / max_len, e))
+                
+        if subset_cands:
+            subset_cands.sort(key=lambda x: x[0], reverse=True)
+            best_score, best_cand = subset_cands[0]
+            if len(subset_cands) == 1 or best_score > subset_cands[1][0] + 0.10:
+                return {"record": best_cand["fund"], "how": "signature", "ambiguous": False}
+
+    # Tier 5: Jaccard token similarity match
+    if len(q_core) >= 2:
+        jaccard_cands = []
+        for e in matcher["records"]:
+            if not is_available(e):
+                continue
+            if not are_plans_compatible(q_plan, e["plan"]):
+                continue
+            e_core = e["core"]
+            if not e_core:
+                continue
+            intersection = len(q_core & e_core)
+            union = len(q_core | e_core)
+            sim = intersection / union if union > 0 else 0
+            if sim >= 0.65:
+                jaccard_cands.append((sim, e))
+                
+        if jaccard_cands:
+            jaccard_cands.sort(key=lambda x: x[0], reverse=True)
+            best_sim, best_cand = jaccard_cands[0]
+            if len(jaccard_cands) == 1 or (best_sim - jaccard_cands[1][0] >= 0.12):
+                return {"record": best_cand["fund"], "how": "signature", "ambiguous": False}
+
+    # Tier 6: SequenceMatcher fuzzy match on cleaned strings
+    if len(q_cleaned) >= 5:
+        fuzzy_cands = []
+        for e in matcher["records"]:
+            if not is_available(e):
+                continue
+            if not are_plans_compatible(q_plan, e["plan"]):
+                continue
+            ratio = difflib.SequenceMatcher(None, q_cleaned, e["cleaned"]).ratio()
+            if ratio >= 0.82:
+                fuzzy_cands.append((ratio, e))
+        if fuzzy_cands:
+            fuzzy_cands.sort(key=lambda x: x[0], reverse=True)
+            best_ratio, best_cand = fuzzy_cands[0]
+            if len(fuzzy_cands) == 1 or (best_ratio - fuzzy_cands[1][0] >= 0.08):
+                return {"record": best_cand["fund"], "how": "signature", "ambiguous": False}
 
     return {"record": None, "how": None, "ambiguous": False}
 
@@ -589,20 +887,15 @@ def merge_risk_and_rolling(risk_res: Dict[str, Any], rolling_res: Dict[str, Any]
     for f in risk_funds:
         item = dict(f)
 
-        # Exact normalized-name match wins; otherwise fall back to a signature match
-        # (tolerant of "Reg"/"Regular", "Gr"/"Growth", a missing "Fund", punctuation and
-        # token order) but ONLY when exactly one rolling record carries that signature.
-        # An earlier "first few words in common" fuzzy fallback had to be removed because
-        # it attributed one scheme's rolling returns to a different scheme whenever an AMC
-        # offered several funds sharing those words.
-        result = match_rolling_record(matcher, f.get("name"))
+        # Multi-tiered match tolerant of Plan/Option absence, acronyms, compound words, and formatting
+        result = match_rolling_record(matcher, f.get("name"), consumed_ids=consumed)
         matched_rolling = result["record"]
         if result["ambiguous"]:
             ambiguous_names.append(f.get("name"))
 
         if matched_rolling:
             matched_count += 1
-            if result["how"] == "signature":
+            if result.get("how") != "exact":
                 signature_matched_count += 1
             consumed.add(id(matched_rolling))
             item["std_dev"] = matched_rolling.get("std_dev") or item.get("std_dev")
@@ -654,35 +947,27 @@ def merge_risk_and_rolling(risk_res: Dict[str, Any], rolling_res: Dict[str, Any]
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017/")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "mutual_funds_db")
-DB_PATH = os.path.join(WORKSPACE_DIR, "records.db")
 
-# A cloud/remote MongoDB (Atlas) is treated as the system of record: when one is
-# configured, the local SQLite file is NOT used as a silent write fallback, because two
-# devices quietly writing to their own local files is exactly how multi-device data
-# diverges. SQLite remains the store only for local single-machine use.
-MONGO_IS_REMOTE = MONGO_URI.startswith("mongodb+srv://") or not any(
-    host in MONGO_URI for host in ("127.0.0.1", "localhost")
+MONGO_IS_REMOTE = (
+    os.getenv("MONGO_IS_REMOTE") == "1"
+    or MONGO_URI.startswith("mongodb+srv://")
+    or not any(host in MONGO_URI for host in ("127.0.0.1", "localhost", "mongo"))
 )
 # Cloud round-trips need a longer handshake budget than a loopback connection.
-MONGO_TIMEOUT_MS = int(os.getenv("MONGO_TIMEOUT_MS", "8000" if MONGO_IS_REMOTE else "1000"))
+MONGO_TIMEOUT_MS = int(os.getenv("MONGO_TIMEOUT_MS", "8000" if MONGO_IS_REMOTE else "2000"))
 
 _mongo_client = None
 _mongo_db = None
 _mongo_last_failed_at = 0.0
-_mongo_retry_cooldown_sec = 30
-
-def mongo_required() -> bool:
-    """True when a remote MongoDB is configured and must be reachable to serve requests."""
-    return MONGO_IS_REMOTE
+_mongo_retry_cooldown_sec = 10
 
 
 def require_mongo_db():
     """
-    Returns the Mongo database, raising 503 when a remote MongoDB is configured but
-    unreachable — surfacing the outage instead of silently diverging into local SQLite.
+    Returns the Mongo database, raising 503 when MongoDB is unreachable.
     """
     mdb = get_mongo_db()
-    if mdb is None and mongo_required():
+    if mdb is None:
         raise HTTPException(
             status_code=503,
             detail="The MongoDB database is unreachable. Data is not being saved — "
@@ -693,9 +978,7 @@ def require_mongo_db():
 
 def get_mongo_db():
     """
-    Connects to MongoDB (local or Atlas) using PyMongo.
-    Failed attempts are cached for a cooldown window so requests don't pay the full
-    connection timeout on every call while the database is down.
+    Connects to MongoDB using PyMongo.
     """
     global _mongo_client, _mongo_db, _mongo_last_failed_at
     if _mongo_db is not None:
@@ -728,22 +1011,14 @@ def get_mongo_db():
         _mongo_db["mutual_funds"].create_index([("category", pymongo.ASCENDING)])
         _mongo_db["mutual_funds"].create_index([("user_id", pymongo.ASCENDING)])
 
-        safe_uri = re.sub(r'//[^@]+@', '//***:***@', MONGO_URI)  # never log credentials
-        print(f"🍃 Connected to MongoDB: {safe_uri} (Database: {MONGO_DB_NAME})")
+        logger.info("Connected to server MongoDB database %s", MONGO_DB_NAME)
         return _mongo_db
     except Exception as e:
         _mongo_client = None
         _mongo_db = None
         _mongo_last_failed_at = time.monotonic()
-        if MONGO_IS_REMOTE:
-            print(f"⚠️  MongoDB (remote) unreachable: {type(e).__name__}: {e}")
+        logger.exception("MongoDB connection failed")
         return None
-
-
-def get_sqlite_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 # ==========================================
@@ -819,18 +1094,11 @@ def find_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         return None
 
     mdb = require_mongo_db()
-    if mdb is not None:
-        doc = mdb["users"].find_one({"email": email})
-        if doc:
-            return {"uid": doc["_id"], "email": doc["email"],
-                    "password_hash": doc["password_hash"], "name": doc.get("name", "")}
-        return None
-
-    with get_sqlite_db() as conn:
-        row = conn.execute(
-            "SELECT uid, email, password_hash, name FROM users WHERE email = ?", (email,)
-        ).fetchone()
-        return dict(row) if row else None
+    doc = mdb["users"].find_one({"email": email})
+    if doc:
+        return {"uid": str(doc["_id"]), "email": doc["email"],
+                "password_hash": doc["password_hash"], "name": doc.get("name", "")}
+    return None
 
 
 def find_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
@@ -838,18 +1106,11 @@ def find_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         return None
 
     mdb = require_mongo_db()
-    if mdb is not None:
-        doc = mdb["users"].find_one({"_id": user_id})
-        if doc:
-            return {"uid": doc["_id"], "email": doc["email"],
-                    "password_hash": doc["password_hash"], "name": doc.get("name", "")}
-        return None
-
-    with get_sqlite_db() as conn:
-        row = conn.execute(
-            "SELECT uid, email, password_hash, name FROM users WHERE uid = ?", (user_id,)
-        ).fetchone()
-        return dict(row) if row else None
+    doc = mdb["users"].find_one({"_id": user_id})
+    if doc:
+        return {"uid": str(doc["_id"]), "email": doc["email"],
+                "password_hash": doc["password_hash"], "name": doc.get("name", "")}
+    return None
 
 
 def create_user(email: str, password: str, name: str) -> Dict[str, Any]:
@@ -860,23 +1121,13 @@ def create_user(email: str, password: str, name: str) -> Dict[str, Any]:
     password_hash = hash_password(password)
 
     mdb = require_mongo_db()
-    if mdb is not None:
-        try:
-            mdb["users"].insert_one({
-                "_id": user_id, "email": email, "password_hash": password_hash,
-                "name": name, "created_at": created_at, "created_at_dt": now_dt,
-            })
-        except pymongo.errors.DuplicateKeyError:
-            raise HTTPException(status_code=409, detail="An account with that email already exists.")
-    else:
-        with get_sqlite_db() as conn:
-            try:
-                conn.execute(
-                    "INSERT INTO users (uid, email, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (user_id, email, password_hash, name, created_at))
-                conn.commit()
-            except sqlite3.IntegrityError:
-                raise HTTPException(status_code=409, detail="An account with that email already exists.")
+    try:
+        mdb["users"].insert_one({
+            "_id": user_id, "email": email, "password_hash": password_hash,
+            "name": name, "created_at": created_at, "created_at_dt": now_dt,
+        })
+    except pymongo.errors.DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="An account with that email already exists.")
 
     return {"uid": user_id, "email": email, "name": name, "created_at": created_at}
 
@@ -887,8 +1138,7 @@ def count_users() -> int:
         mdb = get_mongo_db()
         if mdb is not None:
             return mdb["users"].count_documents({})
-        with get_sqlite_db() as conn:
-            return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        return 0
     except Exception:
         return -1  # unknown (database unreachable)
 
@@ -951,7 +1201,7 @@ async def get_favicon():
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "app": "Mutual Fund Analytics Platform", "version": "2.1.0"}
+    return {"status": "ok", "app": "Mutual Fund Analytics Platform", "version": "2.4.0"}
 
 
 @app.post("/api/upload")
@@ -1109,7 +1359,8 @@ async def upload_files(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading Excel spreadsheet: {str(e)}")
+        logger.exception("Error reading Excel spreadsheet")
+        raise HTTPException(status_code=500, detail="Error reading Excel spreadsheet. Check server logs for details.")
 
 
 @app.post("/api/upload-rolling-category")
@@ -1169,21 +1420,25 @@ async def upload_rolling_category(
         for f in current_funds:
             item = dict(f)
 
-            result = match_rolling_record(matcher, f.get("name"))
+            result = match_rolling_record(matcher, f.get("name"), consumed_ids=consumed)
             matched = result["record"]
             if result["ambiguous"]:
                 ambiguous_names.append(f.get("name"))
 
             if matched:
                 matched_count += 1
-                if result["how"] == "signature":
+                if result.get("how") != "exact":
                     signature_matched_count += 1
                 consumed.add(id(matched))
                 if matched.get("rolling_1y") is not None: item["rolling_1y"] = matched["rolling_1y"]
                 if matched.get("rolling_2y") is not None: item["rolling_2y"] = matched["rolling_2y"]
                 if matched.get("rolling_3y") is not None: item["rolling_3y"] = matched["rolling_3y"]
                 if matched.get("rolling_5y") is not None: item["rolling_5y"] = matched["rolling_5y"]
-                if matched.get("rolling_avg") is not None: item["rolling_avg"] = matched["rolling_avg"]
+                # Derive the mean from every retained horizon, including earlier uploads.
+                horizons = [item.get(key) for key in
+                            ("rolling_1y", "rolling_2y", "rolling_3y", "rolling_5y")]
+                values = [v for v in horizons if isinstance(v, (int, float))]
+                item["rolling_avg"] = round(sum(values) / len(values), 2) if values else None
 
                 # Update supplemental risk ratios if not already present
                 if matched.get("std_dev") is not None and item.get("std_dev") is None:
@@ -1259,7 +1514,8 @@ async def upload_rolling_category(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to merge category rolling returns: {str(e)}")
+        logger.exception("Failed to merge category rolling returns")
+        raise HTTPException(status_code=500, detail="Failed to merge category rolling returns. Check server logs for details.")
 
 
 @app.post("/api/recalculate")
@@ -1283,7 +1539,8 @@ async def recalculate_dataset(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Recalculation failed: {str(e)}")
+        logger.exception("Recalculation failed")
+        raise HTTPException(status_code=500, detail="Recalculation failed. Check server logs for details.")
 
 
 @app.post("/api/analyze-custom")
@@ -1322,7 +1579,8 @@ async def analyze_custom_sheet(
             "data": analysis
         })
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Custom analysis failed: {str(e)}")
+        logger.exception("Custom analysis failed")
+        raise HTTPException(status_code=500, detail="Custom analysis failed. Check server logs for details.")
 
 
 @app.post("/api/export")
@@ -1384,7 +1642,8 @@ async def export_data(data: Dict[str, Any], user: Dict[str, Any] = Depends(get_c
             headers={"Content-Disposition": "attachment; filename=mutual_fund_analytics_report.xlsx"}
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Export generation failed: {str(e)}")
+        logger.exception("Export generation failed")
+        raise HTTPException(status_code=500, detail="Export generation failed. Check server logs for details.")
 
 
 @app.post("/api/export-basket")
@@ -1472,87 +1731,11 @@ async def export_selected_basket(request: Request, user: Dict[str, Any] = Depend
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Basket export generation failed: {str(e)}")
+        logger.exception("Basket export generation failed")
+        raise HTTPException(status_code=500, detail="Basket export generation failed. Check server logs for details.")
 
 def init_db():
-    # 1. Initialize local SQLite fallback
-    with get_sqlite_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS saved_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                mongo_id TEXT DEFAULT '',
-                name TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                total_funds INTEGER DEFAULT 0,
-                valid_sharpe_count INTEGER DEFAULT 0,
-                avg_sharpe REAL DEFAULT 0.0,
-                above_avg_count INTEGER DEFAULT 0,
-                below_avg_count INTEGER DEFAULT 0,
-                outperformance_rate REAL DEFAULT 0.0,
-                total_aum REAL DEFAULT 0.0,
-                top_performer_name TEXT DEFAULT '',
-                top_performer_sharpe REAL DEFAULT 0.0,
-                files_summary TEXT DEFAULT '',
-                data_json TEXT NOT NULL
-            )
-        """)
-        # Ensure newer columns exist in databases created by earlier versions
-        cursor.execute("PRAGMA table_info(saved_records)")
-        existing_cols = [c[1] for c in cursor.fetchall()]
-        if "mongo_id" not in existing_cols:
-            cursor.execute("ALTER TABLE saved_records ADD COLUMN mongo_id TEXT DEFAULT ''")
-        if "uid" not in existing_cols:
-            cursor.execute("ALTER TABLE saved_records ADD COLUMN uid TEXT DEFAULT ''")
-
-        # Backfill a stable unique id for any pre-existing row that predates the uid column
-        cursor.execute("SELECT id FROM saved_records WHERE uid IS NULL OR uid = ''")
-        for row in cursor.fetchall():
-            cursor.execute("UPDATE saved_records SET uid = ? WHERE id = ?", (str(uuid.uuid4()), row[0]))
-
-        if "user_id" not in existing_cols:
-            cursor.execute("ALTER TABLE saved_records ADD COLUMN user_id TEXT DEFAULT ''")
-
-        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_records_uid ON saved_records(uid)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_records_user ON saved_records(user_id)")
-
-        # User accounts. Each user's sessions and saved records are scoped to their uid,
-        # so signing in from any device brings back that account's data and nobody else's.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                uid TEXT PRIMARY KEY,
-                email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                name TEXT DEFAULT '',
-                created_at TEXT NOT NULL
-            )
-        """)
-        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-
-        # Live working session: the active dataset plus the UI state that goes with it
-        # (basket, filters, benchmark, sort, active tab). Persisted server-side and keyed
-        # by a UUID so a reload restores exactly where the user left off.
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                uid TEXT PRIMARY KEY,
-                user_id TEXT DEFAULT '',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                updated_at_ts REAL NOT NULL,
-                total_funds INTEGER DEFAULT 0,
-                files_summary TEXT DEFAULT '',
-                state_json TEXT NOT NULL
-            )
-        """)
-        cursor.execute("PRAGMA table_info(sessions)")
-        session_cols = [c[1] for c in cursor.fetchall()]
-        if "user_id" not in session_cols:
-            cursor.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT DEFAULT ''")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at_ts DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, updated_at_ts DESC)")
-        conn.commit()
-
-    # 2. Try initializing MongoDB connection
+    # Initialize MongoDB connection and indexes
     get_mongo_db()
 
 init_db()
@@ -1685,247 +1868,123 @@ async def save_session(request: Request, user: Dict[str, Any] = Depends(get_curr
         files_summary = state.get("files_summary", "") or ""
 
         mdb = require_mongo_db()
-        if mdb is not None:
-            # Scoped by user_id as well as uid so one account can never overwrite another's.
-            mdb["sessions"].update_one(
-                {"_id": uid, "user_id": user["uid"]},
-                {"$set": {
-                    "user_id": user["uid"],
-                    "updated_at": updated_at,
-                    "updated_at_dt": now_dt,
-                    "total_funds": total_funds,
-                    "files_summary": files_summary,
-                    "state": state,
-                },
-                 "$setOnInsert": {"created_at": updated_at}},
-                upsert=True
-            )
-        else:
-            with get_sqlite_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT uid FROM sessions WHERE uid = ? AND user_id = ?", (uid, user["uid"]))
-                exists = cursor.fetchone() is not None
-                if exists:
-                    cursor.execute("""
-                        UPDATE sessions
-                           SET updated_at = ?, updated_at_ts = ?, total_funds = ?,
-                               files_summary = ?, state_json = ?
-                         WHERE uid = ? AND user_id = ?
-                    """, (updated_at, now_dt.timestamp(), total_funds, files_summary,
-                          state_json, uid, user["uid"]))
-                else:
-                    cursor.execute("""
-                        INSERT INTO sessions (uid, user_id, created_at, updated_at, updated_at_ts,
-                                              total_funds, files_summary, state_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (uid, user["uid"], updated_at, updated_at, now_dt.timestamp(),
-                          total_funds, files_summary, state_json))
-                conn.commit()
+        mdb["sessions"].update_one(
+            {"_id": uid, "user_id": user["uid"]},
+            {"$set": {
+                "user_id": user["uid"],
+                "updated_at": updated_at,
+                "updated_at_dt": now_dt,
+                "total_funds": total_funds,
+                "files_summary": files_summary,
+                "state": state,
+            },
+             "$setOnInsert": {"created_at": updated_at}},
+            upsert=True
+        )
 
         return {"status": "success", "uid": uid, "updated_at": updated_at, "total_funds": total_funds}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save session: {str(e)}")
+        logger.exception("Failed to save session")
+        raise HTTPException(status_code=500, detail="Failed to save session. Check server logs for details.")
 
 
 @app.get("/api/session/latest")
 async def get_latest_session(user: Dict[str, Any] = Depends(get_current_user)):
     """Most recently updated session for the signed-in user, or 'empty' when none."""
     mdb = require_mongo_db()
-    if mdb is not None:
-        doc = mdb["sessions"].find_one({"user_id": user["uid"]},
-                                       sort=[("updated_at_dt", pymongo.DESCENDING)])
-        if not doc:
-            return {"status": "empty"}
-        return {
-            "status": "success",
-            "uid": str(doc["_id"]),
-            "updated_at": doc.get("updated_at", ""),
-            "total_funds": doc.get("total_funds", 0),
-            "state": doc.get("state"),
-        }
-
-    try:
-        with get_sqlite_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT uid, updated_at, total_funds, state_json
-                  FROM sessions
-                 WHERE user_id = ?
-              ORDER BY updated_at_ts DESC
-                 LIMIT 1
-            """, (user["uid"],))
-            row = cursor.fetchone()
-            if not row:
-                return {"status": "empty"}
-            return {
-                "status": "success",
-                "uid": row["uid"],
-                "updated_at": row["updated_at"],
-                "total_funds": row["total_funds"],
-                "state": json.loads(row["state_json"]),
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load session: {str(e)}")
+    doc = mdb["sessions"].find_one({"user_id": user["uid"]},
+                                   sort=[("updated_at_dt", pymongo.DESCENDING)])
+    if not doc:
+        return {"status": "empty"}
+    return {
+        "status": "success",
+        "uid": str(doc["_id"]),
+        "updated_at": doc.get("updated_at", ""),
+        "total_funds": doc.get("total_funds", 0),
+        "state": doc.get("state"),
+    }
 
 
 @app.get("/api/session/{uid}")
 async def get_session(uid: str, user: Dict[str, Any] = Depends(get_current_user)):
     """Returns one of the signed-in user's sessions by its UUID."""
     mdb = require_mongo_db()
-    if mdb is not None:
-        doc = mdb["sessions"].find_one({"_id": uid, "user_id": user["uid"]})
-        if not doc:
-            raise HTTPException(status_code=404, detail="Session not found.")
-        return {
-            "status": "success",
-            "uid": str(doc["_id"]),
-            "updated_at": doc.get("updated_at", ""),
-            "total_funds": doc.get("total_funds", 0),
-            "state": doc.get("state"),
-        }
-
-    with get_sqlite_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT uid, updated_at, total_funds, state_json FROM sessions WHERE uid = ? AND user_id = ?",
-            (uid, user["uid"]))
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Session not found.")
-        return {
-            "status": "success",
-            "uid": row["uid"],
-            "updated_at": row["updated_at"],
-            "total_funds": row["total_funds"],
-            "state": json.loads(row["state_json"]),
-        }
+    doc = mdb["sessions"].find_one({"_id": uid, "user_id": user["uid"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return {
+        "status": "success",
+        "uid": str(doc["_id"]),
+        "updated_at": doc.get("updated_at", ""),
+        "total_funds": doc.get("total_funds", 0),
+        "state": doc.get("state"),
+    }
 
 
 @app.delete("/api/session/{uid}")
 async def delete_session(uid: str, user: Dict[str, Any] = Depends(get_current_user)):
     """Clears one of the signed-in user's sessions (used by 'start fresh')."""
-    removed = 0
     mdb = require_mongo_db()
-    if mdb is not None:
-        removed = mdb["sessions"].delete_one({"_id": uid, "user_id": user["uid"]}).deleted_count
-    else:
-        with get_sqlite_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM sessions WHERE uid = ? AND user_id = ?", (uid, user["uid"]))
-            conn.commit()
-            removed = cursor.rowcount
+    removed = mdb["sessions"].delete_one({"_id": uid, "user_id": user["uid"]}).deleted_count
     return {"status": "success", "removed": removed}
 
 
 @app.get("/api/db/status")
 async def get_db_status():
-    """
-    Returns live database connection status for MongoDB Compass.
-    """
+    """Report availability without exposing credentials, connection strings, or user counts."""
     mdb = get_mongo_db()
     if mdb is not None:
         try:
-            records_cnt = mdb["saved_records"].count_documents({})
-            funds_cnt = mdb["mutual_funds"].count_documents({})
-            return {
-                "status": "connected",
-                "engine": "MongoDB (PyMongo)",
-                "compass_compatible": True,
-                "connection_uri": MONGO_URI,
-                "database": MONGO_DB_NAME,
-                "collections": {
-                    "saved_records": records_cnt,
-                    "mutual_funds": funds_cnt
-                },
-                "compass_instructions": f"Open MongoDB Compass and connect to: {MONGO_URI}"
-            }
-        except Exception as e:
-            pass
-
-    # SQLite Fallback Status
-    with get_sqlite_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM saved_records")
-        sqlite_count = cursor.fetchone()[0]
-
+            mdb.command("ping")
+            return {"status": "connected", "engine": "MongoDB (PyMongo)", "storage": "server"}
+        except Exception:
+            logger.exception("MongoDB status check failed")
     return {
-        "status": "fallback",
-        "engine": "SQLite (Local Fallback)",
-        "compass_compatible": True,
-        "connection_uri": MONGO_URI,
-        "database": MONGO_DB_NAME,
-        "sqlite_records": sqlite_count,
-        "message": "MongoDB not detected on port 27017. Storing data locally. Start MongoDB Compass / mongod to view live in Compass."
+        "status": "disconnected",
+        "engine": "MongoDB (PyMongo)",
+        "storage": "server",
+        "message": "Server database is unreachable. Changes cannot be saved until it reconnects.",
     }
 
 
 @app.get("/api/records")
 async def list_saved_records(user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Returns the signed-in user's saved records.
+    Returns the signed-in user's saved records from MongoDB.
     """
     mdb = require_mongo_db()
-    if mdb is not None:
-        try:
-            docs = list(mdb["saved_records"].find(
-                {"user_id": user["uid"]},
-                {
-                    "data": 0, "funds": 0
-                }
-            ).sort("created_at_dt", pymongo.DESCENDING))
+    docs = list(mdb["saved_records"].find(
+        {"user_id": user["uid"]},
+        {"data": 0, "funds": 0}
+    ).sort("created_at_dt", pymongo.DESCENDING))
 
-            records = []
-            for d in docs:
-                records.append({
-                    "id": d.get("uid") or str(d["_id"]),
-                    "name": d.get("name", "Untitled Analysis"),
-                    "created_at": d.get("created_at", ""),
-                    "total_funds": d.get("total_funds", 0),
-                    "valid_sharpe_count": d.get("valid_sharpe_count", 0),
-                    "avg_sharpe": d.get("avg_sharpe", 0.0),
-                    "above_avg_count": d.get("above_avg_count", 0),
-                    "below_avg_count": d.get("below_avg_count", 0),
-                    "outperformance_rate": d.get("outperformance_rate", 0.0),
-                    "total_aum": d.get("total_aum", 0.0),
-                    "top_performer_name": d.get("top_performer_name", ""),
-                    "top_performer_sharpe": d.get("top_performer_sharpe", 0.0),
-                    "files_summary": d.get("files_summary", ""),
-                    "storage_engine": "Secure Storage"
-                })
-            return {"status": "success", "engine": "MongoDB", "count": len(records), "records": records}
-        except Exception:
-            pass
-
-    # Fallback to SQLite
-    try:
-        with get_sqlite_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT uid, id, name, created_at, total_funds, valid_sharpe_count,
-                       avg_sharpe, above_avg_count, below_avg_count, outperformance_rate,
-                       total_aum, top_performer_name, top_performer_sharpe, files_summary
-                FROM saved_records
-                WHERE user_id = ?
-                ORDER BY id DESC
-            """, (user["uid"],))
-            rows = cursor.fetchall()
-            records = [dict(r) for r in rows]
-            for r in records:
-                r["storage_engine"] = "Local Cache"
-                # The UUID is the id the client uses for load/delete — stable and unique
-                # regardless of which storage engine served the row.
-                r["id"] = r.get("uid") or str(r.get("id"))
-            return {"status": "success", "engine": "SQLite", "count": len(records), "records": records}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch saved records: {str(e)}")
+    records = []
+    for d in docs:
+        records.append({
+            "id": d.get("uid") or str(d["_id"]),
+            "name": d.get("name", "Untitled Analysis"),
+            "created_at": d.get("created_at", ""),
+            "total_funds": d.get("total_funds", 0),
+            "valid_sharpe_count": d.get("valid_sharpe_count", 0),
+            "avg_sharpe": d.get("avg_sharpe", 0.0),
+            "above_avg_count": d.get("above_avg_count", 0),
+            "below_avg_count": d.get("below_avg_count", 0),
+            "outperformance_rate": d.get("outperformance_rate", 0.0),
+            "total_aum": d.get("total_aum", 0.0),
+            "top_performer_name": d.get("top_performer_name", ""),
+            "top_performer_sharpe": d.get("top_performer_sharpe", 0.0),
+            "files_summary": d.get("files_summary", ""),
+            "storage_engine": "MongoDB"
+        })
+    return {"status": "success", "engine": "MongoDB", "count": len(records), "records": records}
 
 
 @app.post("/api/records/save")
 async def save_current_record(request: Request, user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Saves an analysed dataset against the signed-in user's account.
+    Saves an analysed dataset against the signed-in user's account in MongoDB.
     """
     try:
         body = await request.json()
@@ -1940,83 +1999,41 @@ async def save_current_record(request: Request, user: Dict[str, Any] = Depends(g
         top_perf = summary.get("top_performer") or {}
         now_dt = datetime.now()
         created_at_str = now_dt.strftime("%d %b %Y, %I:%M %p")
-
-        # Stable unique id for this record, independent of which storage engine is live.
         record_uid = str(uuid.uuid4())
-        mongo_id_str = ""
         mdb = require_mongo_db()
 
-        # 1. Save to MongoDB
-        if mdb is not None:
-            try:
-                record_doc = {
-                    "uid": record_uid,
-                    "user_id": user["uid"],
-                    "name": name,
-                    "created_at": created_at_str,
-                    "created_at_dt": now_dt,
-                    "total_funds": int(summary.get("total_funds", 0)),
-                    "valid_sharpe_count": int(summary.get("valid_sharpe_count", 0)),
-                    "avg_sharpe": float(summary.get("avg_sharpe", 0.0)),
-                    "above_avg_count": int(summary.get("above_avg_count", 0)),
-                    "below_avg_count": int(summary.get("below_avg_count", 0)),
-                    "outperformance_rate": float(summary.get("outperformance_rate", 0.0)),
-                    "total_aum": float(summary.get("total_aum", 0.0)),
-                    "top_performer_name": str(top_perf.get("name", "")),
-                    "top_performer_sharpe": float(top_perf.get("sharpe") or 0.0),
-                    "files_summary": files_summary,
-                    "data": data
-                }
-                res = mdb["saved_records"].insert_one(record_doc)
-                mongo_id_str = str(res.inserted_id)
+        record_doc = {
+            "uid": record_uid,
+            "user_id": user["uid"],
+            "name": name,
+            "created_at": created_at_str,
+            "created_at_dt": now_dt,
+            "total_funds": int(summary.get("total_funds", 0)),
+            "valid_sharpe_count": int(summary.get("valid_sharpe_count", 0)),
+            "avg_sharpe": float(summary.get("avg_sharpe", 0.0)),
+            "above_avg_count": int(summary.get("above_avg_count", 0)),
+            "below_avg_count": int(summary.get("below_avg_count", 0)),
+            "outperformance_rate": float(summary.get("outperformance_rate", 0.0)),
+            "total_aum": float(summary.get("total_aum", 0.0)),
+            "top_performer_name": str(top_perf.get("name", "")),
+            "top_performer_sharpe": float(top_perf.get("sharpe") or 0.0),
+            "files_summary": files_summary,
+            "data": data
+        }
+        mdb["saved_records"].insert_one(record_doc)
 
-                # Also insert individual funds into `mutual_funds` collection for querying in Compass
-                funds_to_insert = []
-                for f in data.get("funds", []):
-                    fund_doc = dict(f)
-                    fund_doc["snapshot_id"] = record_uid
-                    fund_doc["user_id"] = user["uid"]
-                    fund_doc["snapshot_name"] = name
-                    fund_doc["snapshot_date"] = created_at_str
-                    funds_to_insert.append(fund_doc)
+        # Also insert individual funds into `mutual_funds` collection for querying in Compass
+        funds_to_insert = []
+        for f in data.get("funds", []):
+            fund_doc = dict(f)
+            fund_doc["snapshot_id"] = record_uid
+            fund_doc["user_id"] = user["uid"]
+            fund_doc["snapshot_name"] = name
+            fund_doc["snapshot_date"] = created_at_str
+            funds_to_insert.append(fund_doc)
 
-                if funds_to_insert:
-                    mdb["mutual_funds"].insert_many(funds_to_insert)
-
-            except Exception as mongo_err:
-                print("MongoDB insert warning:", mongo_err)
-                raise HTTPException(status_code=503,
-                                    detail=f"Could not save to the database: {mongo_err}")
-        else:
-            # Local-only mode (no remote MongoDB configured)
-            with get_sqlite_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO saved_records (
-                        uid, user_id, mongo_id, name, created_at, total_funds, valid_sharpe_count,
-                        avg_sharpe, above_avg_count, below_avg_count, outperformance_rate,
-                        total_aum, top_performer_name, top_performer_sharpe, files_summary,
-                        data_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    record_uid,
-                    user["uid"],
-                    mongo_id_str,
-                    name,
-                    created_at_str,
-                    int(summary.get("total_funds", 0)),
-                    int(summary.get("valid_sharpe_count", 0)),
-                    float(summary.get("avg_sharpe", 0.0)),
-                    int(summary.get("above_avg_count", 0)),
-                    int(summary.get("below_avg_count", 0)),
-                    float(summary.get("outperformance_rate", 0.0)),
-                    float(summary.get("total_aum", 0.0)),
-                    str(top_perf.get("name", "")),
-                    float(top_perf.get("sharpe") or 0.0),
-                    files_summary,
-                    json.dumps(data)
-                ))
-                conn.commit()
+        if funds_to_insert:
+            mdb["mutual_funds"].insert_many(funds_to_insert)
 
         return {
             "status": "success",
@@ -2025,106 +2042,56 @@ async def save_current_record(request: Request, user: Dict[str, Any] = Depends(g
             "uid": record_uid,
             "name": name,
             "created_at": created_at_str,
-            "engine": "Secure Storage"
+            "engine": "MongoDB"
         }
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save record: {str(e)}")
+        logger.exception("Failed to save record")
+        raise HTTPException(status_code=500, detail="Failed to save record. Check server logs for details.")
 
 
 @app.get("/api/records/{record_id}")
 async def get_saved_record(record_id: str, user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Retrieves the full payload of one of the signed-in user's saved records.
+    Retrieves the full payload of one of the signed-in user's saved records from MongoDB.
     """
-    # 1. MongoDB — always constrained to this user's own records
     mdb = require_mongo_db()
-    if mdb is not None:
-        doc = mdb["saved_records"].find_one({"uid": record_id, "user_id": user["uid"]})
-        if not doc and ObjectId.is_valid(record_id):
-            doc = mdb["saved_records"].find_one({"_id": ObjectId(record_id), "user_id": user["uid"]})
-        if not doc:
-            raise HTTPException(status_code=404, detail="Saved record not found.")
+    doc = mdb["saved_records"].find_one({"uid": record_id, "user_id": user["uid"]})
+    if not doc and ObjectId.is_valid(record_id):
+        doc = mdb["saved_records"].find_one({"_id": ObjectId(record_id), "user_id": user["uid"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Saved record not found.")
 
-        meta = dict(doc)
-        meta["id"] = meta.get("uid") or str(meta["_id"])
-        data_payload = meta.pop("data", None)
-        meta.pop("_id", None)
-        return {
-            "status": "success",
-            "engine": "MongoDB",
-            "record_meta": meta,
-            "data": data_payload
-        }
-
-    # 2. Local SQLite mode
-    try:
-        with get_sqlite_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """SELECT * FROM saved_records
-                    WHERE user_id = ?
-                      AND (uid = ? OR id = ? OR (mongo_id <> '' AND mongo_id = ?))""",
-                (user["uid"], record_id, record_id, record_id)
-            )
-            row = cursor.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail="Saved record not found.")
-
-            rec = dict(row)
-            data_payload = json.loads(rec["data_json"])
-            del rec["data_json"]
-            return {
-                "status": "success",
-                "engine": "SQLite Fallback",
-                "record_meta": rec,
-                "data": data_payload
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load record: {str(e)}")
+    meta = dict(doc)
+    meta["id"] = meta.get("uid") or str(meta["_id"])
+    data_payload = meta.pop("data", None)
+    meta.pop("_id", None)
+    return {
+        "status": "success",
+        "engine": "MongoDB",
+        "record_meta": meta,
+        "data": data_payload
+    }
 
 
 @app.delete("/api/records/{record_id}")
 async def delete_saved_record(record_id: str, user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Deletes one of the signed-in user's saved records. Every query is constrained by
-    user_id, so one account can never delete another account's record.
+    Deletes one of the signed-in user's saved records from MongoDB.
     """
     if not record_id or not record_id.strip():
         raise HTTPException(status_code=400, detail="A record id is required.")
 
-    deleted = False
     mdb = require_mongo_db()
-    if mdb is not None:
-        res = mdb["saved_records"].delete_one({"uid": record_id, "user_id": user["uid"]})
-        if res.deleted_count == 0 and ObjectId.is_valid(record_id):
-            res = mdb["saved_records"].delete_one({"_id": ObjectId(record_id), "user_id": user["uid"]})
-        if res.deleted_count > 0:
-            mdb["mutual_funds"].delete_many({"snapshot_id": record_id, "user_id": user["uid"]})
-            deleted = True
-    else:
-        # The mongo_id guard matters: every SQLite-only row stores mongo_id = '', so an
-        # unguarded `mongo_id = ?` would match every row for an empty id.
-        try:
-            with get_sqlite_db() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """DELETE FROM saved_records
-                        WHERE user_id = ?
-                          AND (uid = ? OR id = ? OR (mongo_id <> '' AND mongo_id = ?))""",
-                    (user["uid"], record_id, record_id, record_id)
-                )
-                conn.commit()
-                if cursor.rowcount > 0:
-                    deleted = True
-        except Exception:
-            pass
+    res = mdb["saved_records"].delete_one({"uid": record_id, "user_id": user["uid"]})
+    if res.deleted_count == 0 and ObjectId.is_valid(record_id):
+        res = mdb["saved_records"].delete_one({"_id": ObjectId(record_id), "user_id": user["uid"]})
 
-    if deleted:
+    if res.deleted_count > 0:
+        mdb["mutual_funds"].delete_many({"snapshot_id": record_id, "user_id": user["uid"]})
         return {"status": "success", "message": "Record deleted successfully."}
+
     raise HTTPException(status_code=404, detail="Record not found to delete.")
 
 
@@ -2185,8 +2152,7 @@ def _cli_create_user(argv: List[str]) -> int:
         print(f"✗ Could not create the account: {e}")
         return 1
 
-    store = "MongoDB" if get_mongo_db() is not None else "local SQLite"
-    print(f"✓ Created account for {user['email']} (id {user['uid']}) in {store}.")
+    print(f"✓ Created account for {user['email']} (id {user['uid']}) in MongoDB.")
     print("  They can now sign in from any device.")
     return 0
 
@@ -2199,45 +2165,20 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "create-user":
         raise SystemExit(_cli_create_user(sys.argv[2:]))
 
-    target_port = find_available_port(8005)
+    target_port = find_available_port(int(os.getenv("PORT", "8005")))
 
     # HOST defaults to 0.0.0.0 so phones/laptops on the same network can reach the app.
     # Set HOST=127.0.0.1 to restrict it back to this machine only.
     host = os.getenv("HOST", "0.0.0.0")
 
-    lan_ip = ""
-    try:
-        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        probe.connect(("8.8.8.8", 80))
-        lan_ip = probe.getsockname()[0]
-        probe.close()
-    except Exception:
-        pass
-
-    print("=" * 66)
-    print("🚀 Mutual Fund Analytics Server")
-    print(f"   This machine : http://127.0.0.1:{target_port}/")
-    if host == "0.0.0.0" and lan_ip:
-        print(f"   Other devices: http://{lan_ip}:{target_port}/   (same Wi-Fi/network)")
-    print("-" * 66)
-    if MONGO_IS_REMOTE:
-        print(f"   Database     : remote MongoDB  [{re.sub(r'//[^@]+@', '//***:***@', MONGO_URI)}]")
-        print("                  (required — local SQLite is NOT used as a fallback)")
-    else:
-        print("   Database     : local  (set MONGO_URI to an Atlas connection string for")
-        print("                  multi-device access, e.g. mongodb+srv://user:pass@cluster/)")
+    logger.info("Starting Mutual Fund Analytics on %s:%s", host, target_port)
+    logger.info("Persistent MongoDB database: %s", MONGO_DB_NAME)
     n_users = count_users()
     if n_users == 0:
-        print("-" * 66)
-        print("   ⚠  No accounts exist yet — the sign-in page has nothing to sign in with.")
-        print("      Create the first one:")
-        print("        python main.py create-user you@example.com \"YourPassword\" \"Your Name\"")
+        logger.warning("No accounts exist. Create the first account with: python main.py create-user <email>")
     elif n_users > 0:
-        print(f"   Accounts     : {n_users} "
-              f"({'public signup ON' if ALLOW_SIGNUP else 'sign-in only — add users via create-user'})")
-    if os.getenv("COOKIE_SECURE", "0") != "1":
-        print("   ⚠  Auth cookies are not HTTPS-only. Before exposing this to the internet,")
-        print("      serve it over HTTPS and set COOKIE_SECURE=1 and APP_SECRET=<random>.")
-    print("=" * 66)
+        logger.info("Accounts: %s; public signup: %s", n_users, ALLOW_SIGNUP)
 
-    uvicorn.run("main:app", host=host, port=target_port, reload=True)
+    # One server process owns weekly rotation. Uvicorn lifecycle and errors use
+    # our logging handlers; HTTP access is logged by RequestLoggingMiddleware.
+    uvicorn.run(app, host=host, port=target_port, log_config=None, access_log=False)

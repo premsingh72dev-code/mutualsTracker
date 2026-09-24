@@ -3,6 +3,7 @@
 # records.db is the live DB: accounts, bcrypt hashes, sessions, saved records
 .app_secret
 .env
+data/
 records.db
 *.db
 *.sqlite
@@ -34,3 +35,9 @@ desktop.ini
 exports/
 uploads/
 *.bak
+
+# Weekly server log files and rotated archives
+logs/
+
+# Synthetic regression fixture only; source spreadsheets remain ignored.
+!tests/fixtures/percentage_returns.xls

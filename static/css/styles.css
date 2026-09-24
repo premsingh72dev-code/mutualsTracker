@@ -820,14 +820,17 @@ body {
 
 /* ===== SCHEME-NAME MATCH REPORT ===== */
 .match-report-notice {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 12px;
+  padding: 12px 16px;
   margin-bottom: 16px;
   border-radius: var(--radius-md);
   font-size: 0.82rem;
   line-height: 1.5;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: all var(--transition-fast);
 }
 
 .match-report-notice.match-ok {
@@ -851,9 +854,74 @@ body {
 }
 
 .match-report-notice .match-icon {
-  font-size: 1rem;
+  font-size: 1.1rem;
   flex-shrink: 0;
   line-height: 1.4;
+}
+
+.match-report-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.match-report-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-hide-match-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(146, 64, 14, 0.25);
+  background: rgba(255, 255, 255, 0.7);
+  color: #92400e;
+  transition: all var(--transition-fast);
+}
+
+.btn-hide-match-notice:hover {
+  background: #ffffff;
+  border-color: rgba(146, 64, 14, 0.5);
+  color: #78350f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.match-ok .btn-hide-match-notice {
+  border-color: rgba(22, 101, 52, 0.25);
+  color: #166534;
+}
+
+.match-ok .btn-hide-match-notice:hover {
+  border-color: rgba(22, 101, 52, 0.5);
+  color: #14532d;
+}
+
+.btn-toggle-match-list {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.85;
+  transition: opacity var(--transition-fast);
+}
+
+.btn-toggle-match-list:hover {
+  opacity: 1;
 }
 
 .match-name-list {
@@ -866,6 +934,17 @@ body {
 .match-name-list li {
   font-size: 0.78rem;
   line-height: 1.5;
+}
+
+.btn-match-report-toolbar {
+  border-color: #fde68a !important;
+  color: #92400e !important;
+  background: #fffbeb !important;
+}
+
+.btn-match-report-toolbar:hover {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
 }
 
 /* ===== KPI METRIC CARDS ===== */
@@ -1084,11 +1163,13 @@ body {
   background: #e2e8f0;
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
   cursor: pointer;
 }
 
 .clean-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
+  appearance: none;
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -1205,6 +1286,43 @@ body {
   color: #1d4ed8;
 }
 
+/* Flagship Best Funds Finder Tab Button Highlight */
+.tab-button[data-tab="tab-best-funds"] {
+  background: linear-gradient(135deg, rgba(254, 243, 199, 0.6) 0%, rgba(254, 249, 195, 0.4) 100%);
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.1);
+}
+
+.tab-button[data-tab="tab-best-funds"]:hover {
+  background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%);
+  border-color: #f59e0b;
+  color: #78350f;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+.tab-button[data-tab="tab-best-funds"].active {
+  background: #ffffff;
+  color: #b45309;
+  border: 1.5px solid #f59e0b;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.25);
+  font-weight: 800;
+}
+
+.tab-button[data-tab="tab-best-funds"] .tab-pill {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  font-weight: 700;
+}
+
+.tab-button[data-tab="tab-best-funds"].active .tab-pill {
+  background: #f59e0b;
+  color: #ffffff;
+  border-color: #d97706;
+}
+
 .tabs-nav-bar.can-scroll-right {
   box-shadow: inset -20px 0 14px -16px rgba(15, 23, 42, 0.25);
 }
@@ -1296,6 +1414,26 @@ body {
   border-color: #10b981;
   box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2);
   font-weight: 700;
+}
+
+.ratio-preset-chip[data-preset="best-funds"] {
+  background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%);
+  border: 1.5px solid #fde047;
+  color: #92400e;
+  font-weight: 700;
+}
+
+.ratio-preset-chip[data-preset="best-funds"]:hover {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+  color: #78350f;
+}
+
+.ratio-preset-chip[data-preset="best-funds"].active {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  border-color: #b45309;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
 }
 
 /* Custom Multi-Ratio Filter Drawer */
@@ -3242,10 +3380,18 @@ tr.row-selected {
    BEST MUTUAL FUNDS FINDER (3-FACTOR ALPHA + ROLLING DOMINANCE)
    ========================================================================== */
 
+#tab-best-funds {
+  background: linear-gradient(180deg, rgba(255, 253, 245, 0.95) 0%, rgba(248, 250, 252, 0.85) 320px, #f8fafc 100%);
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: 0 4px 24px -2px rgba(245, 158, 11, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
 .best-funds-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
 .best-funds-header-card {
@@ -3254,11 +3400,11 @@ tr.row-selected {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 18px;
-  padding: 20px 24px;
-  background: linear-gradient(135deg, #fefce8 0%, #fffbeb 50%, #fef3c7 100%);
-  border: 1px solid #fde68a;
+  padding: 22px 26px;
+  background: linear-gradient(135deg, #fefce8 0%, #fffdf2 45%, #fef3c7 100%);
+  border: 1.5px solid #fde68a;
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.08);
+  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.12), 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .best-header-left {
@@ -3270,30 +3416,31 @@ tr.row-selected {
 
 .best-header-icon {
   font-size: 2.2rem;
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.15);
-  border: 1px solid #fef08a;
+  box-shadow: 0 3px 10px rgba(217, 119, 6, 0.2);
+  border: 1.5px solid #fef08a;
   flex-shrink: 0;
 }
 
 .best-header-left h2 {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 800;
   color: #78350f;
   margin: 0 0 4px 0;
+  letter-spacing: -0.01em;
 }
 
 .best-header-left p {
   font-size: 0.84rem;
   color: #92400e;
   margin: 0;
-  line-height: 1.45;
+  line-height: 1.48;
 }
 
 .best-header-controls {
@@ -3314,52 +3461,58 @@ tr.row-selected {
   font-weight: 700;
   text-transform: uppercase;
   color: #92400e;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .benchmark-toggle-pills {
   display: inline-flex;
-  background: #fff;
+  background: #ffffff;
   padding: 3px;
   border-radius: 8px;
-  border: 1px solid #fde68a;
+  border: 1.5px solid #fde68a;
   box-shadow: var(--shadow-sm);
 }
 
 .btn-toggle-pill {
-  padding: 5px 12px;
-  font-size: 0.76rem;
+  padding: 6px 14px;
+  font-size: 0.78rem;
   font-weight: 600;
   color: #78350f;
   background: transparent;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-toggle-pill:hover {
+  background: #fef9c3;
+  color: #854d0e;
 }
 
 .btn-toggle-pill.active {
-  background: #f59e0b;
-  color: #fff;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
   font-weight: 700;
-  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.35);
 }
 
 .best-cat-select {
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: 7px 14px;
+  font-size: 0.82rem;
   font-weight: 600;
-  background: #fff;
-  border: 1px solid #fde68a;
+  background: #ffffff;
+  border: 1.5px solid #fde68a;
   color: #78350f;
   border-radius: 8px;
+  box-shadow: var(--shadow-sm);
 }
 
-/* 3-Criteria Grid */
+/* 3-Criteria Grid with Distinct Light Pastel Highlights */
 .best-criteria-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
+  gap: 16px;
 }
 
 @media (max-width: 992px) {
@@ -3375,22 +3528,85 @@ tr.row-selected {
 }
 
 .criteria-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
+  background: #ffffff;
+  border: 1.5px solid var(--border-card);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   position: relative;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .criteria-card:hover {
-  border-color: #cbd5e1;
-  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+/* Step 1: Sharpe - Pastel Sky Blue */
+#criteria-card-sharpe {
+  background: linear-gradient(145deg, #f0f7ff 0%, #fafdff 55%, #ffffff 100%);
+  border-color: #bfdbfe;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.06);
+}
+#criteria-card-sharpe:hover {
+  border-color: #60a5fa;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+}
+#criteria-card-sharpe .criteria-badge-step {
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+/* Step 2: Information Ratio - Pastel Lavender */
+#criteria-card-info {
+  background: linear-gradient(145deg, #f5f3ff 0%, #fbf9ff 55%, #ffffff 100%);
+  border-color: #ddd6fe;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.06);
+}
+#criteria-card-info:hover {
+  border-color: #a78bfa;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.12);
+}
+#criteria-card-info .criteria-badge-step {
+  color: #6d28d9;
+  background: #ede9fe;
+  border-color: #c4b5fd;
+}
+
+/* Step 3: Treynor Ratio - Pastel Warm Amber */
+#criteria-card-treynor {
+  background: linear-gradient(145deg, #fffbeb 0%, #fffdf7 55%, #ffffff 100%);
+  border-color: #fde68a;
+  box-shadow: 0 2px 10px rgba(217, 119, 6, 0.06);
+}
+#criteria-card-treynor:hover {
+  border-color: #fcd34d;
+  box-shadow: 0 6px 18px rgba(217, 119, 6, 0.12);
+}
+#criteria-card-treynor .criteria-badge-step {
+  color: #b45309;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+/* Step 4: Qualified Candidates Summary - Pastel Emerald */
+.criteria-summary-card {
+  background: linear-gradient(145deg, #ecfdf5 0%, #f0fdf4 55%, #ffffff 100%);
+  border-color: #86efac;
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.1);
+}
+.criteria-summary-card:hover {
+  border-color: #4ade80;
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.18);
+}
+.criteria-summary-card .criteria-badge-step {
+  color: #15803d;
+  background: #dcfce7;
+  border-color: #86efac;
 }
 
 .criteria-top {
@@ -3406,26 +3622,26 @@ tr.row-selected {
   color: #2563eb;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 3px 9px;
+  border-radius: 12px;
 }
 
 .criteria-icon {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
 }
 
 .criteria-card h4 {
-  font-size: 0.92rem;
+  font-size: 0.94rem;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
 }
 
 .criteria-card p {
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.45;
   flex: 1;
 }
 
@@ -3438,7 +3654,7 @@ tr.row-selected {
 }
 
 .criteria-metric strong {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 800;
   color: #1e293b;
 }
@@ -3452,20 +3668,9 @@ tr.row-selected {
   color: #15803d;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
-  padding: 3px 8px;
-  border-radius: 4px;
+  padding: 3px 9px;
+  border-radius: 6px;
   align-self: flex-start;
-}
-
-.criteria-summary-card {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-  border: 1px solid #bbf7d0;
-}
-
-.criteria-summary-card .criteria-badge-step {
-  color: #15803d;
-  background: #dcfce7;
-  border-color: #86efac;
 }
 
 .shortlist-count-box {
@@ -3638,25 +3843,31 @@ tr.row-selected {
 .period-scorecard-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  background: linear-gradient(145deg, #ffffff 0%, #fbfcfe 100%);
+  border: 1.5px solid #e2e8f0;
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
 }
 
 .section-heading-row h3 {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 800;
   color: var(--text-primary);
-  margin: 0 0 2px 0;
+  margin: 0 0 3px 0;
+  letter-spacing: -0.01em;
 }
 
 .section-heading-row .section-sub-text {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
 }
 
 .period-cards-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
 @media (max-width: 992px) {
@@ -3672,20 +3883,21 @@ tr.row-selected {
 }
 
 .period-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+  border: 1.5px solid #e2e8f0;
   border-radius: var(--radius-md);
-  padding: 14px 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: all 0.2s ease;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .period-card:hover {
   border-color: #38bdf8;
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 18px rgba(14, 165, 233, 0.12);
 }
 
 .period-card-top {
@@ -3697,21 +3909,22 @@ tr.row-selected {
 .period-horizon-badge {
   font-size: 0.74rem;
   font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 3px 9px;
+  border-radius: 6px;
   background: #eff6ff;
   color: #2563eb;
   border: 1px solid #bfdbfe;
 }
 
 .period-winner-ret {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-weight: 800;
   color: #059669;
+  letter-spacing: -0.01em;
 }
 
 .period-winner-name {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--text-primary);
   white-space: nowrap;
@@ -3721,7 +3934,7 @@ tr.row-selected {
 }
 
 .period-winner-cat {
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   color: var(--text-muted);
 }
 
@@ -3729,7 +3942,7 @@ tr.row-selected {
   display: inline-block;
   font-size: 0.66rem;
   font-weight: 700;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
   background: #fef3c7;
   color: #92400e;
@@ -3742,14 +3955,15 @@ tr.row-selected {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 14px;
-  margin-bottom: 4px;
+  padding: 12px 16px;
+  margin-bottom: 6px;
   border-radius: var(--radius-md);
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  background: linear-gradient(135deg, #fffbeb 0%, #fefce8 100%);
+  border: 1.5px solid #fde68a;
   color: #92400e;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.08);
 }
 
 .rolling-coverage-notice strong {
@@ -3757,9 +3971,31 @@ tr.row-selected {
 }
 
 .rolling-coverage-notice .coverage-icon {
-  font-size: 1rem;
+  font-size: 1.1rem;
   flex-shrink: 0;
   line-height: 1.4;
+}
+
+/* Best Funds Leaderboard Table Styling */
+#tab-best-funds .table-card {
+  border: 1.5px solid #fde68a;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+}
+
+#tab-best-funds .table-meta-row {
+  background: linear-gradient(90deg, #fefce8 0%, #fffdf2 50%, #fef3c7 100%);
+  border-bottom: 1.5px solid #fde68a;
+  padding: 14px 20px;
+}
+
+#tab-best-funds .data-table thead th {
+  background: #fafaf9;
+  border-bottom: 2px solid #e7e5e4;
+  color: #44403c;
+  font-weight: 700;
+  font-size: 0.76rem;
 }
 
 /* Leaderboard Badges */
@@ -3767,46 +4003,51 @@ tr.row-selected {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 12px;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 800;
   background: #fef3c7;
   color: #92400e;
   border: 1px solid #fde68a;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.1);
 }
 
 .period-win-badge.champ-win {
   background: linear-gradient(135deg, #fde047 0%, #f59e0b 100%);
   color: #78350f;
-  box-shadow: 0 1px 6px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);
 }
 
 .ret-cell-won {
-  background: rgba(16, 185, 129, 0.12) !important;
-  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(5, 150, 105, 0.1) 100%) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  border-radius: 6px;
   font-weight: 800 !important;
   color: #047857 !important;
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.15);
+  padding: 3px 6px;
 }
 
 .selection-status-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.72rem;
   font-weight: 700;
 }
 
 .status-champion {
-  background: #fef08a;
+  background: linear-gradient(135deg, #fef08a 0%, #fde047 100%);
   color: #854d0e;
   border: 1px solid #facc15;
+  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.2);
 }
 
 .status-qualified {
-  background: #ecfdf5;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
   color: #15803d;
-  border: 1px solid #bbf7d0;
+  border: 1px solid #86efac;
 }
